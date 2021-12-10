@@ -13,71 +13,70 @@ import java.util.Map;
 import java.util.Objects;
 
 public class Util {
-    public static List<ResultSet> queryAll(Map<String, CheckedConsumer<PreparedStatement>> queries) throws SQLException {
-        List<ResultSet> res = new ArrayList<>();
+    public static List<Integer> updateAll(Map<String, CheckedConsumer<PreparedStatement>> queries) throws SQLException {
+        List<Integer> res = new ArrayList<>();
         Connection conn = SQLDataSource.getInstance().getSQLConnection();
+        conn.setAutoCommit(false);
         for (String sql : queries.keySet()) {
             PreparedStatement stmt = conn.prepareStatement(sql);
             queries.get(sql).accept(stmt);
-            stmt.execute();
-            res.add(stmt.getResultSet());
+            res.add(stmt.executeUpdate());
         }
         conn.commit();
+        conn.close();
         return res;
     }
 
-    public static ResultSet query(String sql, CheckedConsumer<PreparedStatement> consumer) throws SQLException {
-        Connection conn = SQLDataSource.getInstance().getSQLConnection();
-        PreparedStatement stmt = conn.prepareStatement(sql);
-        consumer.accept(stmt);
-        stmt.execute();
-        conn.commit();
-        return stmt.getResultSet();
+    public static boolean select(String sql, CheckedConsumer<PreparedStatement> consumer, CheckedConsumer<ResultSet> resHandler) throws SQLException {
+        try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            consumer.accept(stmt);
+            ResultSet res = stmt.executeQuery();
+            boolean flag = false;
+            while (res.next()) {
+                resHandler.accept(res);
+                flag = true;
+            }
+            return flag;
+        }
     }
 
-    public static ResultSet safeQuery(String sql) {
-        return safeQuery(sql, stmt -> {});
+    public static boolean safeSelect(String sql, CheckedConsumer<ResultSet> resHandler) {
+        return safeSelect(sql, stmt -> {
+        }, resHandler);
     }
 
-    public static ResultSet safeQuery(String sql, CheckedConsumer<PreparedStatement> consumer) {
+    public static boolean safeSelect(String sql, CheckedConsumer<PreparedStatement> consumer, CheckedConsumer<ResultSet> resHandler) {
         try {
-            return query(sql, consumer);
+            return select(sql, consumer, resHandler);
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return null;
+        return false;
     }
 
-    public static int insert(String sql, CheckedConsumer<PreparedStatement> consumer) {
-        try {
-            ResultSet rs = query(sql, consumer);
-            if (rs.next()) {
-                return rs.getInt(1);
-            }
+    public static int update(String sql, CheckedConsumer<PreparedStatement> consumer) {
+        try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            consumer.accept(stmt);
+            return stmt.executeUpdate();
         } catch (SQLException e) {
             if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
         }
-        return -1;
+        return 0;
     }
 
-    public static boolean handleResult(ResultSet res, CheckedConsumer<ResultSet> consumer) {
-        return handleResult(res, consumer, false);
-    }
-
-    public static boolean handleResult(ResultSet res, CheckedConsumer<ResultSet> consumer, boolean isUnique) {
-        if (res == null) return false;
-        boolean flag = false;
-        try {
-            while (res.next()) {
-                consumer.accept(res);
-                flag = true;
-                if (isUnique) return true;
-            }
+    public static int update(String sql, CheckedBiConsumer<Connection, PreparedStatement> consumer) {
+        try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            consumer.accept(conn, stmt);
+            return stmt.executeUpdate();
         } catch (SQLException e) {
+            if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
         }
-        return flag;
+        return 0;
     }
 
     public static boolean isInsertionFailed(SQLException e) {

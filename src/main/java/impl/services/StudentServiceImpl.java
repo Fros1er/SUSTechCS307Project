@@ -6,19 +6,14 @@ import cn.edu.sustech.cs307.dto.CourseTable;
 import cn.edu.sustech.cs307.dto.Major;
 import cn.edu.sustech.cs307.dto.grade.Grade;
 import cn.edu.sustech.cs307.service.StudentService;
-import impl.utils.CheckedConsumer;
 
 import javax.annotation.Nullable;
 import java.sql.Date;
-import java.sql.PreparedStatement;
 import java.time.DayOfWeek;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static impl.services.UserServiceImpl.addUser;
-import static impl.utils.Util.insert;
-import static impl.utils.Util.queryAll;
 
 public class StudentServiceImpl implements StudentService {
 
@@ -35,7 +30,6 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public List<CourseSearchEntry> searchCourse(int studentId, int semesterId, @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor, @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, CourseType searchCourseType, boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
-        //TODO: wtf is this
         throw new UnsupportedOperationException();
     }
 

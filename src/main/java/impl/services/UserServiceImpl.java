@@ -9,17 +9,14 @@ import impl.utils.CheckedConsumer;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static impl.utils.Util.*;
 
 public class UserServiceImpl implements UserService {
 
-    public static List<ResultSet> addUser(int userId, String firstName, String lastName, String sql, CheckedConsumer<PreparedStatement> consumer) {
-        Map<String, CheckedConsumer<PreparedStatement>> queries = new HashMap<>();
+    public static List<Integer> addUser(int userId, String firstName, String lastName, String sql, CheckedConsumer<PreparedStatement> consumer) {
+        Map<String, CheckedConsumer<PreparedStatement>> queries = new LinkedHashMap<>();
         StringBuilder fullName = new StringBuilder(firstName);
         if (!firstName.matches("^[a-zA-Z ]*") && !lastName.matches("^[a-zA-Z ]*"))
             fullName.append(' ');
@@ -32,10 +29,10 @@ public class UserServiceImpl implements UserService {
                 });
         queries.put(sql, consumer);
         try {
-            return queryAll(queries);
+            return updateAll(queries);
         } catch (SQLException e) {
-            if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
+            if (isInsertionFailed(e)) throw new IntegrityViolationException();
         }
         return null;
     }
@@ -49,12 +46,12 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<User> getAllUsers() {
-        //TODO: ask SA for this hacky way
+        //TODO: need verify by SA
         List<User> res = new ArrayList<>();
-        handleResult(
-                safeQuery("SELECT * FROM major INNER JOIN department"),
+        safeSelect("SELECT * FROM user",
                 (resultSet) -> {
-                    User u = new User() {};
+                    User u = new User() {
+                    };
                     u.id = resultSet.getInt(1);
                     u.fullName = resultSet.getString(2);
                     res.add(u);
@@ -64,8 +61,15 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User getUser(int userId) {
-        // Not used...
-        throw new UnsupportedOperationException();
-
+        // TODO: verify by SA
+        User res = new User() {
+        };
+        safeSelect("SELECT * FROM user WHERE id = ?",
+                stmt -> stmt.setInt(1, userId),
+                resultSet -> {
+                    res.id = resultSet.getInt(1);
+                    res.fullName = resultSet.getString(2);
+                });
+        return res;
     }
 }

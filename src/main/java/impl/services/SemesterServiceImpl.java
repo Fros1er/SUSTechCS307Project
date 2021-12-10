@@ -1,6 +1,7 @@
 package impl.services;
 
 import cn.edu.sustech.cs307.dto.Semester;
+import cn.edu.sustech.cs307.exception.EntityNotFoundException;
 import cn.edu.sustech.cs307.exception.IntegrityViolationException;
 import cn.edu.sustech.cs307.service.SemesterService;
 
@@ -16,7 +17,7 @@ public class SemesterServiceImpl implements SemesterService {
     @Override
     public int addSemester(String name, Date begin, Date end) {
         if (end.before(begin)) throw new IntegrityViolationException();
-        return insert("INSERT INTO semester (id, name, begin, \"end\") VALUES (DEFAULT, ?, ?, ?)",
+        return update("INSERT INTO semester (id, name, begin, \"end\") VALUES (DEFAULT, ?, ?, ?)",
                 stmt -> {
                     stmt.setString(1, name);
                     stmt.setDate(2, begin);
@@ -27,7 +28,7 @@ public class SemesterServiceImpl implements SemesterService {
     @Override
     public void removeSemester(int semesterId) {
         //TODO: Remove selected courses
-        safeQuery(
+        update(
                 "DELETE FROM semester WHERE id = ?",
                 stmt -> stmt.setInt(1, semesterId)
         );
@@ -36,9 +37,8 @@ public class SemesterServiceImpl implements SemesterService {
     @Override
     public List<Semester> getAllSemesters() {
         List<Semester> res = new ArrayList<>();
-        handleResult(
-                safeQuery("SELECT * FROM semester"),
-                (resultSet) -> {
+        safeSelect("SELECT * FROM semester",
+                resultSet -> {
                     Semester s = new Semester();
                     s.id = resultSet.getInt(1);
                     s.name = resultSet.getString(2);
@@ -52,16 +52,16 @@ public class SemesterServiceImpl implements SemesterService {
     @Override
     public Semester getSemester(int semesterId) {
         Semester s = new Semester();
-        if (handleResult(safeQuery("SELECT * FROM semester where id = ?",
-                        stmt -> stmt.setInt(1, semesterId)),
-                (resultSet -> {
+        if (!safeSelect("SELECT * FROM semester where id = ?",
+                stmt -> stmt.setInt(1, semesterId),
+                resultSet -> {
                     s.id = resultSet.getInt(1);
                     s.name = resultSet.getString(2);
                     s.begin = resultSet.getDate(3);
                     s.end = resultSet.getDate(4);
-                }), true)) {
-            return s;
+                })) {
+            throw new EntityNotFoundException();
         }
-        return null;
+        return s;
     }
 }

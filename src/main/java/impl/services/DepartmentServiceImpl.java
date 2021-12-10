@@ -1,6 +1,7 @@
 package impl.services;
 
 import cn.edu.sustech.cs307.dto.Department;
+import cn.edu.sustech.cs307.exception.EntityNotFoundException;
 import cn.edu.sustech.cs307.service.DepartmentService;
 
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -13,7 +14,7 @@ import static impl.utils.Util.*;
 public class DepartmentServiceImpl implements DepartmentService {
     @Override
     public int addDepartment(String name) {
-        return insert(
+        return update(
                 "INSERT INTO public.department (id, name) VALUES (DEFAULT, ?)",
                 stmt -> stmt.setString(1, name)
         );
@@ -21,7 +22,7 @@ public class DepartmentServiceImpl implements DepartmentService {
 
     @Override
     public void removeDepartment(int departmentId) {
-        safeQuery(
+        update(
                 "DELETE FROM department WHERE id = ?",
                 stmt -> stmt.setInt(1, departmentId)
         );
@@ -30,9 +31,8 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Override
     public List<Department> getAllDepartments() {
         List<Department> res = new ArrayList<>();
-        handleResult(
-                safeQuery("SELECT * FROM department"),
-                (resultSet) -> {
+        safeSelect("SELECT * FROM department",
+                resultSet -> {
                     Department d = new Department();
                     d.id = resultSet.getInt(1);
                     d.name = resultSet.getString(2);
@@ -44,14 +44,12 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Override
     public Department getDepartment(int departmentId) {
         Department d = new Department();
-        if (handleResult(safeQuery("SELECT * FROM department where id = ?",
-                        stmt -> stmt.setInt(1, departmentId)),
-                (resultSet -> {
+        if(!safeSelect("SELECT * FROM department where id = ?",
+                stmt -> stmt.setInt(1, departmentId),
+                resultSet -> {
                     d.id = resultSet.getInt(1);
                     d.name = resultSet.getString(2);
-                }), true)) {
-            return d;
-        }
-        return null;
+                })) throw new EntityNotFoundException();
+        return d;
     }
 }
