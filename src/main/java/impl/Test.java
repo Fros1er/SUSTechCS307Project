@@ -11,19 +11,11 @@ import java.util.Objects;
 
 public class Test {
     public static void main(String[] args) {
-        try {
-            Connection conn = SQLDataSource.getInstance().getSQLConnection();
-            PreparedStatement stmt = conn.prepareStatement("SELECT * FROM department");
-            stmt.execute();
-            ResultSet s = stmt.getResultSet();
-            while (s.next()) {
-                System.out.println(s.getInt(1));
-                System.out.println(s.getString(2));
-            }
-            stmt.close();
-            conn.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        String a = "egsijh";
+        String b = "aaa vvvv";
+        String c = "e?";
+        System.out.println(a.matches("[a-zA-Z ]*"));
+        System.out.println(b.matches("[a-zA-Z ]*"));
+        System.out.println(c.matches("[a-zA-Z ]*"));
     }
 }
