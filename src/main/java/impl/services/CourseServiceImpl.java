@@ -27,8 +27,6 @@ public class CourseServiceImpl implements CourseService {
     //TODO: Section left capacity
     @Override
     public void addCourse(String courseId, String courseName, int credit, int classHour, Course.CourseGrading grading, @Nullable Prerequisite prerequisite) {
-        //TODO: Support prerequisite
-
         try {
             Connection conn = SQLDataSource.getInstance().getSQLConnection();
             PreparedStatement getSerial = conn.prepareStatement("SELECT nextval('prerequisite_group_id_seq')");
