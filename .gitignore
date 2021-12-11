@@ -1,3 +1,5 @@
 /.idea
 /target
 /.github
+config.properties
+src/main/java/impl/Test.java

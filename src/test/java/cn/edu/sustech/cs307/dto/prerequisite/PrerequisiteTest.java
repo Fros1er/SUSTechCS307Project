@@ -2,6 +2,8 @@ package cn.edu.sustech.cs307.dto.prerequisite;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -15,6 +17,7 @@ public class PrerequisiteTest {
         ));
         Prerequisite algebra = new CoursePrerequisite("MA103A");
         Prerequisite prerequisite = new AndPrerequisite(List.of(calculus, algebra));
+
 
         String expression = prerequisite.when(new Prerequisite.Cases<>() {
             @Override

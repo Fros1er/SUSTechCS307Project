@@ -48,7 +48,7 @@ public class UserServiceImpl implements UserService {
     public List<User> getAllUsers() {
         //TODO: need verify by SA
         List<User> res = new ArrayList<>();
-        safeSelect("SELECT * FROM user",
+        safeSelect("SELECT * FROM \"user\"",
                 (resultSet) -> {
                     User u = new User() {
                     };

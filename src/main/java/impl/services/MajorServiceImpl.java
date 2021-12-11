@@ -66,7 +66,7 @@ public class MajorServiceImpl implements MajorService {
 
     @Override
     public void addMajorCompulsoryCourse(int majorId, String courseId) {
-        update("INSERT INTO public.major_course (major_id, course_id, type) VALUES (?, ?, Compulsory'')",
+        update("INSERT INTO public.major_course (major_id, course_id, type) VALUES (?, ?, 'Compulsory')",
                 stmt -> {
                     stmt.setInt(1, majorId);
                     stmt.setString(2, courseId);
@@ -75,7 +75,7 @@ public class MajorServiceImpl implements MajorService {
 
     @Override
     public void addMajorElectiveCourse(int majorId, String courseId) {
-        update("INSERT INTO public.major_course (major_id, course_id, type) VALUES (?, ?, Compulsory'')",
+        update("INSERT INTO public.major_course (major_id, course_id, type) VALUES (?, ?, 'Elective')",
                 stmt -> {
                     stmt.setInt(1, majorId);
                     stmt.setString(2, courseId);

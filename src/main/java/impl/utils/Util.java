@@ -61,8 +61,8 @@ public class Util {
             consumer.accept(stmt);
             return stmt.executeUpdate();
         } catch (SQLException e) {
-            if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
+            if (isInsertionFailed(e)) throw new IntegrityViolationException();
         }
         return 0;
     }
