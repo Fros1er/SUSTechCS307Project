@@ -1,3 +1,7 @@
+create type majorcoursetype as enum ('Compulsory', 'Elective');
+
+create type weekday as enum ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY');
+
 create table department
 (
     id   serial
@@ -114,7 +118,8 @@ create table section
     semester_id    integer not null
         constraint section_semester_id_fk
             references semester (id),
-    total_capacity integer not null
+    total_capacity integer not null,
+    left_capacity  integer not null
 );
 
 create unique index section_id_uindex
@@ -143,7 +148,9 @@ create unique index class_id_uindex
 
 create table prerequisite_group
 (
-    id               serial,
+    id               serial
+        constraint prerequisite_group_pk
+            primary key,
     target_course_id varchar not null,
     count            integer not null
 );
@@ -155,7 +162,7 @@ create table prerequisite_truth_table
             primary key,
     group_id  integer not null
         constraint prerequisite_truth_table_prerequisite_group_id_fk
-            references prerequisite_group (id),
+            references prerequisite_group,
     course_id varchar not null
         constraint prerequisite_truth_table_course_id_fk
             references course (id)
@@ -166,5 +173,15 @@ create unique index prerequisite_truth_table_id_uindex
 
 create unique index prerequisite_group_id_uindex
     on prerequisite_group (id);
+
+create table student_course
+(
+    student_id integer not null
+        references student,
+    section_id integer not null
+        references section,
+    grade      char(10),
+    primary key (student_id, section_id)
+);
 
 
