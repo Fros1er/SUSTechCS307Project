@@ -29,10 +29,13 @@ public class CourseServiceImpl implements CourseService {
     public void addCourse(String courseId, String courseName, int credit, int classHour, Course.CourseGrading grading, @Nullable Prerequisite prerequisite) {
         try {
             Connection conn = SQLDataSource.getInstance().getSQLConnection();
-            PreparedStatement getSerial = conn.prepareStatement("SELECT nextval('prerequisite_group_id_seq')");
-            ResultSet resultSet = getSerial.executeQuery();
-            resultSet.next();
-            int groupSerialStart = resultSet.getInt(1);
+            int groupSerialStart = 1;
+            try {
+                PreparedStatement getSerial = conn.prepareStatement("SELECT currval('prerequisite_group_id_seq')");
+                ResultSet resultSet = getSerial.executeQuery();
+                resultSet.next();
+                groupSerialStart = resultSet.getInt(1) + 1;
+            } catch (SQLException ignored) {}
             conn.setAutoCommit(false);
             PreparedStatement stmt = conn.prepareStatement("INSERT INTO public.course (id, course_name, credit, hour, grading) VALUES (?, ?, ?, ?, ?)");
             stmt.setString(1, courseId);
@@ -87,6 +90,7 @@ public class CourseServiceImpl implements CourseService {
                     for (String preCourseId : group) {
                         truthTableStmt.setInt(1, groupSerialStart);
                         truthTableStmt.setString(2, preCourseId);
+                        truthTableStmt.addBatch();
                     }
                     groupSerialStart++;
                 }
@@ -103,12 +107,13 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public int addCourseSection(String courseId, int semesterId, String sectionName, int totalCapacity) {
-        return update("INSERT INTO public.section (id, course_id, semester_id, section_name, total_capacity) VALUES (DEFAULT, ?, ?, ?, ?)",
+        return update("INSERT INTO public.section (id, course_id, semester_id, section_name, total_capacity, left_capacity) VALUES (DEFAULT, ?, ?, ?, ?, ?)",
                 (stmt) -> {
                     stmt.setString(1, courseId);
                     stmt.setInt(2, semesterId);
                     stmt.setString(3, sectionName);
                     stmt.setInt(4, totalCapacity);
+                    stmt.setInt(5, totalCapacity);
                 }
         );
     }
