@@ -55,7 +55,7 @@ public class StudentServiceImpl implements StudentService {
                     stmt-> {
                 stmt.setInt(1, studentId);
                 stmt.setInt(2, sectionId);
-                stmt.setString(3, grade.when(new Grade.Cases<>() {
+                String t = grade.when(new Grade.Cases<>() {
                     @Override
                     public String match(PassOrFailGrade self) {
                         return self.name();
@@ -65,7 +65,14 @@ public class StudentServiceImpl implements StudentService {
                     public String match(HundredMarkGrade self) {
                         return String.valueOf(self.mark);
                     }
-                }));
+                });
+                if (t.equals("PASS")){
+                    stmt.setInt(3,101);
+                } else if (t.equals("FAIL")){
+                    stmt.setInt(3,-1);
+                } else {
+                    stmt.setInt(3, Integer.parseInt(t));
+                }
             });
         } else {
             update("insert into public.student_course(student_id,section_id) value (?,?)",
@@ -82,16 +89,24 @@ public class StudentServiceImpl implements StudentService {
                 stmt->{
                     stmt.setInt(2,studentId);
                     stmt.setInt(3,sectionId);
-                    stmt.setString(1,grade.when(new Grade.Cases<String>() {
+                    String t = grade.when(new Grade.Cases<>() {
                         @Override
                         public String match(PassOrFailGrade self) {
                             return self.name();
                         }
+
                         @Override
                         public String match(HundredMarkGrade self) {
                             return String.valueOf(self.mark);
                         }
-                    }));
+                    });
+                    if (t.equals("PASS")){
+                        stmt.setInt(1,101);
+                    } else if (t.equals("FAIL")){
+                        stmt.setInt(1,-1);
+                    } else {
+                        stmt.setInt(1, Integer.parseInt(t));
+                    }
                 });
     }
 
@@ -109,13 +124,18 @@ public class StudentServiceImpl implements StudentService {
                         tem.credit = resultSet.getInt(3);
                         tem.classHour = resultSet.getInt(4);
                         String t = resultSet.getString(5);
-                        String t2 = resultSet.getString(6);
+                        int t2 = resultSet.getInt(6);
                         tem.grading = Course.CourseGrading.valueOf(t);
                         if (t.equals("PASS_OR_FAIL")){
-                            PassOrFailGrade grade = PassOrFailGrade.valueOf(t2);
+                            PassOrFailGrade grade = null;
+                            if (t2 == 101){
+                                grade = PassOrFailGrade.PASS;
+                            } else {
+                                grade = PassOrFailGrade.FAIL;
+                            }
                             result.put(tem,grade);
                         } else {
-                            HundredMarkGrade grade = new HundredMarkGrade(Short.parseShort(t2));
+                            HundredMarkGrade grade = new HundredMarkGrade((short) t2);
                             result.put(tem,grade);
                         }
                     }
