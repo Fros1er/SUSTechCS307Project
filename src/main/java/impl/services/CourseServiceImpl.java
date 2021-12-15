@@ -35,14 +35,15 @@ public class CourseServiceImpl implements CourseService {
                 ResultSet resultSet = getSerial.executeQuery();
                 resultSet.next();
                 groupSerialStart = resultSet.getInt(1) + 1;
-            } catch (SQLException ignored) {}
+            } catch (SQLException ignored) {
+            }
             conn.setAutoCommit(false);
             PreparedStatement stmt = conn.prepareStatement("INSERT INTO public.course (id, course_name, credit, hour, grading) VALUES (?, ?, ?, ?, ?)");
             stmt.setString(1, courseId);
             stmt.setString(2, courseName);
             stmt.setInt(3, credit);
             stmt.setInt(4, classHour);
-            stmt.setInt(5, grading.ordinal());
+            stmt.setString(5, grading.name());
             stmt.executeUpdate();
             if (prerequisite != null) {
                 List<List<String>> truthTable = prerequisite.when(new Prerequisite.Cases<>() {

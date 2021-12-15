@@ -2,6 +2,8 @@ create type majorcoursetype as enum ('Compulsory', 'Elective');
 
 create type weekday as enum ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY');
 
+create type gradingtype as enum ('PASS_OR_FAIL', 'HUNDRED_MARK_SCORE');
+
 create table department
 (
     id   serial
@@ -83,11 +85,11 @@ create unique index instructor_user_id_uindex
 
 create table course
 (
-    id          varchar  not null,
-    course_name varchar  not null,
-    credit      integer  not null,
-    hour        integer  not null,
-    grading     smallint not null
+    id          varchar     not null,
+    course_name varchar     not null,
+    credit      integer     not null,
+    hour        integer     not null,
+    grading     gradingtype not null
 );
 
 create table major_course
@@ -177,11 +179,48 @@ create unique index prerequisite_group_id_uindex
 create table student_course
 (
     student_id integer not null
-        references student,
+        constraint student_course_student_id_fkey
+            references student,
     section_id integer not null
-        references section,
-    grade      char(10),
-    primary key (student_id, section_id)
+        constraint student_course_section_id_fkey
+            references section,
+    grade      integer,
+    constraint student_course_pkey
+        primary key (student_id, section_id)
 );
+
+create function is_prerequisite_satisfied(integer, character varying) returns boolean
+    language plpgsql
+as
+$$
+begin
+    create temporary table if not exists c on commit delete rows as (
+        select pg.id, pg.count, ptt.course_id
+        from prerequisite_group pg
+                 inner join prerequisite_truth_table ptt on pg.id = ptt.group_id
+        where pg.target_course_id = $2
+    );
+    if exists(select * from c)
+    then
+        return exists(
+                select *
+                from (
+                         select c.id, c.count, count(*) over (partition by c.id) as cnt
+                         from c
+                                  inner join (
+                             select *
+                             from student_course
+                                      inner join section s on student_course.section_id = s.id
+                             where student_course.student_id = $1
+                               and grade > 60
+                         ) as sc on sc.course_id = c.course_id
+                     ) cnt_table
+                where count = cnt
+            );
+    else
+        return true;
+    end if;
+end
+$$;
 
 
