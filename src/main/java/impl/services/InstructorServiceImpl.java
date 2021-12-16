@@ -21,9 +21,20 @@ public class InstructorServiceImpl implements InstructorService {
 
     @Override
     public List<CourseSection> getInstructedCourseSections(int instructorId, int semesterId) {
-        //TODO: Section not fully implemented
         List<CourseSection> res = new ArrayList<>();
-//        safeSelect("SELECT * FROM public.instructor ")
+        safeSelect("SELECT section_id, section_name, total_capacity, left_capacity FROM class INNER JOIN section s ON s.id = class.section_id WHERE instructor_id = ? and semester_id = ?",
+                stmt -> {
+                    stmt.setInt(1, instructorId);
+                    stmt.setInt(2, semesterId);
+                },
+                resultSet -> {
+                    CourseSection s = new CourseSection();
+                    s.id = resultSet.getInt(1);
+                    s.name = resultSet.getString(2);
+                    s.totalCapacity = resultSet.getInt(3);
+                    s.leftCapacity = resultSet.getInt(4);
+                    res.add(s);
+                });
         return res;
     }
 }

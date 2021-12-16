@@ -1,3 +1,9 @@
+create type majorcoursetype as enum ('Compulsory', 'Elective');
+
+create type weekday as enum ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY');
+
+create type gradingtype as enum ('PASS_OR_FAIL', 'HUNDRED_MARK_SCORE');
+
 create table department
 (
     id   serial
@@ -79,11 +85,11 @@ create unique index instructor_user_id_uindex
 
 create table course
 (
-    id          varchar  not null,
-    course_name varchar  not null,
-    credit      integer  not null,
-    hour        integer  not null,
-    grading     smallint not null
+    id          varchar     not null,
+    course_name varchar     not null,
+    credit      integer     not null,
+    hour        integer     not null,
+    grading     gradingtype not null
 );
 
 create table major_course
@@ -114,7 +120,8 @@ create table section
     semester_id    integer not null
         constraint section_semester_id_fk
             references semester (id),
-    total_capacity integer not null
+    total_capacity integer not null,
+    left_capacity  integer not null
 );
 
 create unique index section_id_uindex
@@ -143,7 +150,9 @@ create unique index class_id_uindex
 
 create table prerequisite_group
 (
-    id               serial,
+    id               serial
+        constraint prerequisite_group_pk
+            primary key,
     target_course_id varchar not null,
     count            integer not null
 );
@@ -155,7 +164,7 @@ create table prerequisite_truth_table
             primary key,
     group_id  integer not null
         constraint prerequisite_truth_table_prerequisite_group_id_fk
-            references prerequisite_group (id),
+            references prerequisite_group,
     course_id varchar not null
         constraint prerequisite_truth_table_course_id_fk
             references course (id)
@@ -166,5 +175,52 @@ create unique index prerequisite_truth_table_id_uindex
 
 create unique index prerequisite_group_id_uindex
     on prerequisite_group (id);
+
+create table student_course
+(
+    student_id integer not null
+        constraint student_course_student_id_fkey
+            references student,
+    section_id integer not null
+        constraint student_course_section_id_fkey
+            references section,
+    grade      integer,
+    constraint student_course_pkey
+        primary key (student_id, section_id)
+);
+
+create function is_prerequisite_satisfied(integer, character varying) returns boolean
+    language plpgsql
+as
+$$
+begin
+    create temporary table if not exists c on commit delete rows as (
+        select pg.id, pg.count, ptt.course_id
+        from prerequisite_group pg
+                 inner join prerequisite_truth_table ptt on pg.id = ptt.group_id
+        where pg.target_course_id = $2
+    );
+    if exists(select * from c)
+    then
+        return exists(
+                select *
+                from (
+                         select c.id, c.count, count(*) over (partition by c.id) as cnt
+                         from c
+                                  inner join (
+                             select *
+                             from student_course
+                                      inner join section s on student_course.section_id = s.id
+                             where student_course.student_id = $1
+                               and grade > 60
+                         ) as sc on sc.course_id = c.course_id
+                     ) cnt_table
+                where count = cnt
+            );
+    else
+        return true;
+    end if;
+end
+$$;
 
 
