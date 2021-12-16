@@ -137,20 +137,17 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public void removeCourse(String courseId) {
-        //TODO: Support prerequisite, remove selected courses
-        throw new UnsupportedOperationException();
+        update("DELETE FROM course WHERE id = ?", stmt -> stmt.setString(1, courseId));
     }
 
     @Override
     public void removeCourseSection(int sectionId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
+        update("DELETE FROM section WHERE id = ?", stmt -> stmt.setInt(1, sectionId));
     }
 
     @Override
     public void removeCourseSectionClass(int classId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
+        update("DELETE FROM class WHERE id = ?", stmt -> stmt.setInt(1, classId));
     }
 
     @Override

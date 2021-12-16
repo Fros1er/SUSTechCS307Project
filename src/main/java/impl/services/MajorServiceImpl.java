@@ -27,7 +27,6 @@ public class MajorServiceImpl implements MajorService {
 
     @Override
     public void removeMajor(int majorId) {
-        //TODO: remove students
         update("DELETE FROM public.major WHERE id = ?",
                 stmt -> stmt.setInt(1, majorId));
     }

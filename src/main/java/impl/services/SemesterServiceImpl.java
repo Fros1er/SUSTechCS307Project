@@ -27,7 +27,6 @@ public class SemesterServiceImpl implements SemesterService {
 
     @Override
     public void removeSemester(int semesterId) {
-        //TODO: Remove related courses
         update(
                 "DELETE FROM semester WHERE id = ?",
                 stmt -> stmt.setInt(1, semesterId)
