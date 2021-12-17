@@ -7,10 +7,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class Util {
     public static List<Integer> updateAll(Map<String, CheckedConsumer<PreparedStatement>> queries) throws SQLException {
@@ -86,5 +84,62 @@ public class Util {
             }
         }
         return false;
+    }
+
+    private static final Map<String, Pair<Connection, PreparedStatement>> batchedQuery = new HashMap<>();
+    private static final ExecutorService threadPool = Executors.newCachedThreadPool();
+    public static final List<Future<?>> userThreads = new ArrayList<>();
+
+    public static int timeout = 100;
+
+    public static void commitAllUserInsertion() {
+        synchronized (Util.class) {
+            userThreads.forEach(v -> {
+                try {
+                    v.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            });
+            userThreads.clear();
+        }
+    }
+
+    public static void updateBatch(String sql, CheckedConsumer<PreparedStatement> consumer) {
+        synchronized (Util.class) {
+            Connection conn;
+            PreparedStatement stmt;
+            try {
+                if (!batchedQuery.containsKey(sql)) {
+                    conn = SQLDataSource.getInstance().getSQLConnection();
+                    stmt = conn.prepareStatement(sql);
+                    batchedQuery.put(sql, new Pair<>(conn, stmt));
+                    conn.setAutoCommit(false);
+                    userThreads.add(threadPool.submit(() -> {
+                        try {
+                            try {
+                                Thread.sleep(timeout);
+                            } catch (InterruptedException ignored) {
+                            } finally {
+                                batchedQuery.remove(sql);
+                                stmt.executeBatch();
+                                conn.commit();
+                                conn.close();
+                            }
+                        } catch (SQLException e) {
+                            e.printStackTrace();
+                        }
+                    }));
+                } else {
+                    Pair<Connection, PreparedStatement> p = batchedQuery.get(sql);
+                    conn = p.first;
+                    stmt = p.second;
+                }
+                consumer.accept(stmt);
+                stmt.addBatch();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }

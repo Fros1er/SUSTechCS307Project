@@ -15,26 +15,12 @@ import static impl.utils.Util.*;
 
 public class UserServiceImpl implements UserService {
 
-    public static List<Integer> addUser(int userId, String firstName, String lastName, String sql, CheckedConsumer<PreparedStatement> consumer) {
-        Map<String, CheckedConsumer<PreparedStatement>> queries = new LinkedHashMap<>();
+    public static String getFullName(String firstName, String lastName) {
         StringBuilder fullName = new StringBuilder(firstName);
         if (!firstName.matches("^[a-zA-Z ]*") && !lastName.matches("^[a-zA-Z ]*"))
             fullName.append(' ');
         fullName.append(lastName);
-        queries.put(
-                "INSERT INTO public.user (id, full_name) VALUES (?, ?)",
-                stmt -> {
-                    stmt.setInt(1, userId);
-                    stmt.setString(2, fullName.toString());
-                });
-        queries.put(sql, consumer);
-        try {
-            return updateAll(queries);
-        } catch (SQLException e) {
-            e.printStackTrace();
-            if (isInsertionFailed(e)) throw new IntegrityViolationException();
-        }
-        return null;
+        return fullName.toString();
     }
 
     @Override
