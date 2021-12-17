@@ -26,6 +26,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public void removeUser(int userId) {
         Map<String, CheckedConsumer<PreparedStatement>> queries = new LinkedHashMap<>();
+        commitAllInsertion("user");
         queries.put("ALTER TABLE student DISABLE TRIGGER delete_user_by_student", stmt -> {
         });
         queries.put("ALTER TABLE instructor DISABLE TRIGGER delete_user_by_instructor", stmt -> {
@@ -48,6 +49,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public List<User> getAllUsers() {
         //TODO: need verify by SA
+        commitAllInsertion("user");
         List<User> res = new ArrayList<>();
         safeSelect("SELECT * FROM \"user\"",
                 (resultSet) -> {
@@ -63,6 +65,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User getUser(int userId) {
         // TODO: verify by SA
+        commitAllInsertion("user");
         User res = new User() {
         };
         safeSelect("SELECT * FROM user WHERE id = ?",

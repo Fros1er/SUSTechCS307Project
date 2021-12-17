@@ -121,7 +121,7 @@ public class CourseServiceImpl implements CourseService {
     @Override
     public int addCourseSectionClass(int sectionId, int instructorId, DayOfWeek dayOfWeek, Set<Short> weekList, short classStart, short classEnd, String location) {
         if (classEnd <= classStart) throw new IntegrityViolationException();
-        commitAllUserInsertion();
+        commitAllInsertion("user");
         return update("INSERT INTO public.class (id, section_id, instructor_id, day_of_week, week_list, class_start, class_end, location) VALUES (DEFAULT, ?, ?, CAST(? AS weekday), ?, ?, ?, ?)",
                 (conn, stmt) -> {
                     stmt.setInt(1, sectionId);
@@ -197,7 +197,7 @@ public class CourseServiceImpl implements CourseService {
         c.name = resultSet.getString(2);
         c.credit = resultSet.getInt(3);
         c.classHour = resultSet.getInt(4);
-        c.grading = Course.CourseGrading.values()[resultSet.getShort(5)];
+        c.grading = Course.CourseGrading.valueOf(resultSet.getString(5));
         return c;
     }
 }

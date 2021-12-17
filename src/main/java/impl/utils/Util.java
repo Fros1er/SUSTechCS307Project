@@ -12,6 +12,7 @@ public class Util {
         List<Integer> res = new ArrayList<>();
         Connection conn = SQLDataSource.getInstance().getSQLConnection();
         conn.setAutoCommit(false);
+        conn.prepareStatement("BEGIN TRANSACTION").execute();
         for (String sql : queries.keySet()) {
             PreparedStatement stmt = conn.prepareStatement(sql);
             queries.get(sql).accept(stmt);
@@ -89,36 +90,40 @@ public class Util {
         return false;
     }
 
-    private static final Map<String, Pair<Connection, PreparedStatement>> batchedQuery = new HashMap<>();
+    private static final Map<String, Pair<Connection, PreparedStatement>> batchedQuery = new ConcurrentHashMap<>();
     private static final ExecutorService threadPool = Executors.newCachedThreadPool();
-    public static final List<Future<?>> userThreads = new ArrayList<>();
+    public static Map<String, List<Future<?>>> threads = new ConcurrentHashMap<>();
 
     public static int timeout = 100;
 
-    public static void commitAllUserInsertion() {
+    public static void commitAllInsertion(String name) {
         synchronized (Util.class) {
-            userThreads.forEach(v -> {
+            if (!threads.containsKey(name)) return;
+            threads.get(name).forEach(v -> {
                 try {
                     v.get();
                 } catch (InterruptedException | ExecutionException e) {
                     e.printStackTrace();
                 }
             });
-            userThreads.clear();
+            threads.get(name).clear();
         }
     }
 
-    public static void updateBatch(String sql, CheckedConsumer<PreparedStatement> consumer) {
+    public static void updateBatch(String name, String sql, CheckedConsumer<PreparedStatement> consumer) {
         synchronized (Util.class) {
             Connection conn;
             PreparedStatement stmt;
+            if (!threads.containsKey(name)) {
+                threads.put(name, new ArrayList<>());
+            }
             try {
                 if (!batchedQuery.containsKey(sql)) {
                     conn = SQLDataSource.getInstance().getSQLConnection();
                     stmt = conn.prepareStatement(sql);
                     batchedQuery.put(sql, new Pair<>(conn, stmt));
                     conn.setAutoCommit(false);
-                    userThreads.add(threadPool.submit(() -> {
+                    threads.get(name).add(threadPool.submit(() -> {
                         try {
                             try {
                                 Thread.sleep(timeout);
