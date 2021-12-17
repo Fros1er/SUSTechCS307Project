@@ -27,6 +27,7 @@ create table major
     department_id integer not null
         constraint major_department_id_fk
             references department
+            on delete cascade
 );
 
 create unique index major_id_uindex
@@ -63,8 +64,12 @@ create table student
         constraint student_pk
             primary key
         constraint student_user_id_fk
-            references "user",
-    major_id      integer not null,
+            references "user"
+            on delete cascade,
+    major_id      integer not null
+        constraint student_major_id_fk
+            references major
+            on delete cascade,
     enrolled_date date    not null
 );
 
@@ -78,6 +83,7 @@ create table instructor
             primary key
         constraint instructor_user_id_fk
             references "user"
+            on delete cascade
 );
 
 create unique index instructor_user_id_uindex
@@ -96,10 +102,12 @@ create table major_course
 (
     major_id  integer         not null
         constraint major_course_major_id_fk
-            references major,
+            references major
+            on delete cascade,
     course_id varchar         not null
         constraint major_course_course_id_fk
-            references course (id),
+            references course (id)
+            on delete cascade,
     type      majorcoursetype not null,
     constraint major_course_pk
         primary key (major_id, course_id)
@@ -116,10 +124,12 @@ create table section
     section_name   varchar not null,
     course_id      varchar not null
         constraint section_course_course_id_fk
-            references course (id),
+            references course (id)
+            on delete cascade,
     semester_id    integer not null
         constraint section_semester_id_fk
-            references semester (id),
+            references semester (id)
+            on delete cascade,
     total_capacity integer not null,
     left_capacity  integer not null
 );
@@ -134,7 +144,8 @@ create table class
             primary key,
     section_id    integer    not null
         constraint class_section_id_fk
-            references section,
+            references section
+            on delete cascade,
     instructor_id integer    not null
         constraint class_instructor_user_id_fk
             references instructor,
@@ -180,10 +191,12 @@ create table student_course
 (
     student_id integer not null
         constraint student_course_student_id_fkey
-            references student,
+            references student
+            on delete cascade,
     section_id integer not null
         constraint student_course_section_id_fkey
-            references section,
+            references section
+            on delete cascade,
     grade      integer,
     constraint student_course_pkey
         primary key (student_id, section_id)
@@ -222,5 +235,63 @@ begin
     end if;
 end
 $$;
+
+create function user_student_delete_trigger() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+    delete from "user" where "user".id not in (select user_id from student);
+    return null;
+end;
+$$;
+
+create function user_instructor_delete_trigger() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+    delete from "user" where "user".id not in (select user_id from instructor);
+    return null;
+end;
+$$;
+
+create function user_delete_trigger() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+    delete from "user" where "user".id = old.user_id;
+    return null;
+end;
+$$;
+
+create trigger delete_user_by_student
+    after delete
+    on student
+    for each row
+execute procedure user_delete_trigger();
+
+create trigger delete_user_by_instructor
+    after delete
+    on instructor
+    for each row
+execute procedure user_delete_trigger();
+
+create function prerequisite_group_update_count_trigger() returns trigger
+    language plpgsql
+as
+$$
+begin
+    update prerequisite_group set count = count - 1 where id = old.group_id;
+    return old;
+end
+$$;
+
+create trigger delete_prerequisite_course
+    after delete
+    on prerequisite_truth_table
+    for each row
+execute procedure prerequisite_group_update_count_trigger();
 
 

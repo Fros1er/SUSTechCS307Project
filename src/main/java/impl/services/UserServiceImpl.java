@@ -39,9 +39,24 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void removeUser(int userId) {
-        //TODO: remove user
-        throw new UnsupportedOperationException();
-
+        Map<String, CheckedConsumer<PreparedStatement>> queries = new LinkedHashMap<>();
+        queries.put("ALTER TABLE student DISABLE TRIGGER delete_user_by_student", stmt -> {
+        });
+        queries.put("ALTER TABLE instructor DISABLE TRIGGER delete_user_by_instructor", stmt -> {
+        });
+        queries.put(
+                "DELETE FROM \"user\" where id = ?",
+                stmt -> stmt.setInt(1, userId)
+        );
+        queries.put("ALTER TABLE student ENABLE TRIGGER delete_user_by_student", stmt -> {
+        });
+        queries.put("ALTER TABLE instructor ENABLE TRIGGER delete_user_by_instructor", stmt -> {
+        });
+        try {
+            updateAll(queries);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
