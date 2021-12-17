@@ -3,10 +3,7 @@ package impl.utils;
 import cn.edu.sustech.cs307.database.SQLDataSource;
 import cn.edu.sustech.cs307.exception.IntegrityViolationException;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -55,9 +52,15 @@ public class Util {
 
     public static int update(String sql, CheckedConsumer<PreparedStatement> consumer) {
         try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
-            PreparedStatement stmt = conn.prepareStatement(sql);
+            PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             consumer.accept(stmt);
-            return stmt.executeUpdate();
+            stmt.executeUpdate();
+            ResultSet rs = stmt.getGeneratedKeys();
+            int res = 0;
+            if (rs.next()) {
+                res = rs.getInt(1);
+            }
+            return res;
         } catch (SQLException e) {
             e.printStackTrace();
             if (isInsertionFailed(e)) throw new IntegrityViolationException();
