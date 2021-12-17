@@ -8,7 +8,6 @@ import cn.edu.sustech.cs307.dto.prerequisite.OrPrerequisite;
 import cn.edu.sustech.cs307.dto.prerequisite.Prerequisite;
 import cn.edu.sustech.cs307.exception.IntegrityViolationException;
 import cn.edu.sustech.cs307.service.CourseService;
-import impl.utils.CheckedConsumer;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -38,7 +37,7 @@ public class CourseServiceImpl implements CourseService {
             } catch (SQLException ignored) {
             }
             conn.setAutoCommit(false);
-            PreparedStatement stmt = conn.prepareStatement("INSERT INTO public.course (id, course_name, credit, hour, grading) VALUES (?, ?, ?, ?, ?)");
+            PreparedStatement stmt = conn.prepareStatement("INSERT INTO public.course (id, course_name, credit, hour, grading) VALUES (?, ?, ?, ?, CAST(? as gradingtype))");
             stmt.setString(1, courseId);
             stmt.setString(2, courseName);
             stmt.setInt(3, credit);
@@ -122,6 +121,7 @@ public class CourseServiceImpl implements CourseService {
     @Override
     public int addCourseSectionClass(int sectionId, int instructorId, DayOfWeek dayOfWeek, Set<Short> weekList, short classStart, short classEnd, String location) {
         if (classEnd <= classStart) throw new IntegrityViolationException();
+        commitAllUserInsertion();
         return update("INSERT INTO public.class (id, section_id, instructor_id, day_of_week, week_list, class_start, class_end, location) VALUES (DEFAULT, ?, ?, CAST(? AS weekday), ?, ?, ?, ?)",
                 (conn, stmt) -> {
                     stmt.setInt(1, sectionId);

@@ -7,16 +7,19 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.ArrayList;
 import java.util.List;
 
-import static impl.services.UserServiceImpl.addUser;
+import static impl.services.UserServiceImpl.getFullName;
 import static impl.utils.Util.safeSelect;
+import static impl.utils.Util.updateBatch;
 
 @ParametersAreNonnullByDefault
 public class InstructorServiceImpl implements InstructorService {
     @Override
     public void addInstructor(int userId, String firstName, String lastName) {
-        addUser(userId, firstName, lastName,
-                "INSERT INTO public.instructor (user_id) VALUES (?)",
-                stmt -> stmt.setInt(1, userId));
+        updateBatch("SELECT insert_instructor(?, ?)",
+                stmt -> {
+                    stmt.setInt(1, userId);
+                    stmt.setString(2, getFullName(firstName, lastName));
+                });
     }
 
     @Override

@@ -13,7 +13,7 @@ import java.time.DayOfWeek;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static impl.services.UserServiceImpl.addUser;
+import static impl.services.UserServiceImpl.getFullName;
 import static impl.utils.Util.*;
 
 @ParametersAreNonnullByDefault
@@ -21,12 +21,12 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
-        addUser(userId, firstName, lastName,
-                "INSERT INTO public.student (user_id, major_id, enrolled_date) VALUES (?, ?, ?)",
+        updateBatch("SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
-                    stmt.setInt(2, majorId);
-                    stmt.setDate(3, enrolledDate);
+                    stmt.setString(2, getFullName(firstName, lastName));
+                    stmt.setInt(3, majorId);
+                    stmt.setDate(4, enrolledDate);
                 });
     }
 
@@ -42,6 +42,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
+        commitAllUserInsertion();
         update("delete from public.student_course where student_id = ? and section_id = ?",
                 stmt -> {
                     stmt.setInt(1, studentId);
@@ -56,15 +57,15 @@ public class StudentServiceImpl implements StudentService {
                     stmt -> {
                         stmt.setInt(1, studentId);
                         stmt.setInt(2, sectionId);
-                        stmt.setString(3, grade.when(new Grade.Cases<>() {
+                        stmt.setShort(3, grade.when(new Grade.Cases<>() {
                             @Override
-                            public String match(PassOrFailGrade self) {
-                                return self.name();
+                            public Short match(PassOrFailGrade self) {
+                                return (short) ((self == PassOrFailGrade.PASS) ? 101 : -1);
                             }
 
                             @Override
-                            public String match(HundredMarkGrade self) {
-                                return String.valueOf(self.mark);
+                            public Short match(HundredMarkGrade self) {
+                                return self.mark;
                             }
                         }));
                     });
