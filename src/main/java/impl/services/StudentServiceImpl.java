@@ -32,7 +32,111 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public List<CourseSearchEntry> searchCourse(int studentId, int semesterId, @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor, @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, CourseType searchCourseType, boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
-        throw new UnsupportedOperationException();
+        StringBuilder sql1 = new StringBuilder("select * from section join class on semester_id = ? and section.id = class.section_id");
+        StringBuilder sql2 = new StringBuilder(" join course on section.course_id = course.id");
+        StringBuilder sql3 = new StringBuilder(" join \"user\" on \"user\".id = instructor_id");
+        StringBuilder sql4 = new StringBuilder(" join student on user_id = ? join major_course on student.major_id = major_course.major_id and type = ?");
+        String sql5 = null;
+        String sql6 = " order by course.id,course_name limit ? offset ?;";
+        if (searchCid != null) {
+            sql2.append(" and course.id = '").append(searchCid).append("'");
+        }
+        if (searchName != null){
+            sql2.append(" and course_name = '").append(searchName).append("'");
+        }
+        if (searchInstructor != null){
+            sql3.append(" and full_name = '").append(searchInstructor).append("'");
+        }
+        if (searchDayOfWeek != null){
+            sql1.append(" and day_of_week = '").append(searchDayOfWeek.name()).append("'");
+        }
+        if (searchClassTime != null){
+            sql1.append(" and class_start <= ").append(searchClassTime).append(" and class_end >= ").append(searchClassTime);
+        }
+        if (searchClassLocations != null){
+            sql1.append(" and location in (");
+            for (int i = 0; i < searchClassLocations.size(); i++){
+                if (i == searchClassLocations.size()-1){
+                    sql1.append("'").append(searchClassLocations.get(i)).append("')");
+                } else {
+                    sql1.append("'").append(searchClassLocations.get(i)).append("',");
+                }
+            }
+        }
+        if (ignoreFull){
+            sql1.append(" and left_capacity > 0");
+        }
+        if (!ignoreMissingPrerequisites){
+            sql4.append(" and type = ? and is_prerequisite_satisfied(student.user_id, course.id) = true");
+        }
+        if (ignorePassed){
+            sql5 = " join student_course on section.id = student_course.section_id and student_id = student.user_id and grade >= 60;";
+        }
+        HashMap<String,String[]> enrolledCourse = new HashMap<>();
+        safeSelect("select day_of_week,section_name,course_name,class_start from student_course\n" +
+                        "    join class on class.section_id = student_course.section_id and student_id = ?\n" +
+                        "    join section on class.section_id = section.id\n" +
+                        "    join course on section.course_id = course.id;",
+                stmt->stmt.setInt(1,studentId),
+                resultSet -> {
+                    String weekday = resultSet.getString(1);
+                    if (!enrolledCourse.containsKey(weekday)) {
+                        enrolledCourse.put(weekday, new String[10]);
+                    }
+                    enrolledCourse.get(weekday)[resultSet.getInt(4)] = String.format("%s[%s]",resultSet.getString(3),resultSet.getString(2));
+                });
+        StringBuilder sql0 = new StringBuilder();
+        sql0.append(sql1).append(sql2).append(sql3).append(sql4).append(sql5).append(sql6);
+        List<CourseSearchEntry> list = new ArrayList<>();
+        HashMap<Integer,CourseSearchEntry> buffer = new HashMap<>();
+        safeSelect(sql0.toString(),
+                stmt->{
+                    stmt.setInt(1,semesterId);
+                    stmt.setInt(2,studentId);
+                    stmt.setString(3,searchCourseType.name());
+                    stmt.setInt(4,pageSize);
+                    stmt.setInt(5,pageIndex*(pageSize-1));
+                },
+                resultSet -> {
+                    Course course = new Course();
+                    CourseSection section = new CourseSection();
+                    CourseSectionClass tem = new CourseSectionClass();
+                    course.id = resultSet.getString("course.id");
+                    course.name = resultSet.getString("course_name");
+                    course.classHour = resultSet.getInt("hour");
+                    course.credit = resultSet.getInt("credit");
+                    course.grading = Course.CourseGrading.valueOf(resultSet.getString("grading"));
+                    section.id = resultSet.getInt("section_id");
+                    section.name = resultSet.getString("section_name");
+                    section.totalCapacity = resultSet.getInt("total_capacity");
+                    section.leftCapacity = resultSet.getInt("left_capacity");
+                    tem.id = resultSet.getInt("class.id");
+                    tem.instructor.id = resultSet.getInt("\"user\".id");
+                    tem.instructor.fullName = resultSet.getString("full_name");
+                    tem.classBegin = resultSet.getShort("class_start");
+                    tem.classEnd = resultSet.getShort("class_end");
+                    tem.dayOfWeek = DayOfWeek.valueOf(resultSet.getString("day_of_week"));
+                    tem.weekList = (Set<Short>) resultSet.getArray("week_list");
+                    tem.location = resultSet.getString("location");
+                    boolean sw = true;
+                    if (!ignoreConflict){
+                        if (enrolledCourse.get(tem.dayOfWeek.name())[tem.classBegin] != null){
+                            sw = false;
+                        }
+                    }
+                    if (buffer.containsKey(section.id) && sw){
+                        buffer.get(section.id).sectionClasses.add(tem);
+                    } else if (sw) {
+                        buffer.put(section.id, new CourseSearchEntry());
+                        buffer.get(section.id).course = course;
+                        buffer.get(section.id).section = section;
+                        if (ignoreConflict){
+                            buffer.get(section.id).conflictCourseNames.add(enrolledCourse.get(tem.dayOfWeek.name())[tem.classBegin]);
+                        }
+                    }
+                }
+                );
+        return list;
     }
 
     @Override
@@ -138,16 +242,17 @@ public class StudentServiceImpl implements StudentService {
         CourseTable courseTable = new CourseTable();
         safeSelect("select day_of_week,section_name,instructor_id,full_name,class_start,class_end,location from class join (\n" +
                         "select * from student_course join (\n" +
-                        "select section_name,section.id from section join (\n" +
-                        "select id from semester where begin < ? and ? < semester.end) t1\n" +
+                        "select section_name,section.id,begin from section join (\n" +
+                        "select id,begin from semester where ? between begin and \"end\") t1\n" +
                         "on t1.id = section.semester_id) t2\n" +
                         "on section_id = id and student_id = ?) t3\n" +
-                        "on class.section_id = t3.section_id and array_position(week_list,?) IS NOT NULL\n" +
-                        "join \"user\" on instructor_id = \"user\".id;",
+                        "on class.section_id = t3.section_id and findWeek(begin,?) = ANY (week_list)\n" +
+                        "join \"user\" on instructor_id = \"user\".id\n" +
+                        "order by day_of_week;",
                 stmt -> {
                     stmt.setDate(1, date);
-                    stmt.setDate(2, date);
-                    stmt.setInt(3, studentId);
+                    stmt.setInt(2, studentId);
+                    stmt.setDate(3, date);
                 },
                 resultSet -> {
                     CourseTable.CourseTableEntry entry = new CourseTable.CourseTableEntry();
