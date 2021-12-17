@@ -63,8 +63,10 @@ public class StudentServiceImpl implements StudentService {
                 }
             }
         }
+        boolean situation = false;
         switch (searchCourseType) {
             case ALL: {
+                situation = true;
                 break;
             }
             case MAJOR_COMPULSORY:{
@@ -88,7 +90,11 @@ public class StudentServiceImpl implements StudentService {
             sql1.append(" and left_capacity > 0");
         }
         if (!ignoreMissingPrerequisites){
-            sql4.append(" and type = ? and is_prerequisite_satisfied(student.user_id, course.id) = true");
+            if (!situation) {
+                sql4.append(" and type = ? and is_prerequisite_satisfied(student.user_id, course.id) = true");
+            } else {
+                sql4.append(" on type = ? and is_prerequisite_satisfied(student.user_id, course.id) = true");
+            }
         }
         if (ignorePassed){
             sql5 = " join student_course on section.id = student_course.section_id and student_id = student.user_id and grade >= 60;";
