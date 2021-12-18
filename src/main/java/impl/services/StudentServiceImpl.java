@@ -293,6 +293,7 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public CourseTable getCourseTable(int studentId, Date date) {
         CourseTable courseTable = new CourseTable();
+        courseTable.table = new HashMap<>();
         safeSelect("select day_of_week,section_name,instructor_id,full_name,class_start,class_end,location from class join (\n" +
                         "select * from student_course join (\n" +
                         "select section_name,section.id,begin from section join (\n" +
@@ -342,16 +343,17 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public Major getStudentMajor(int studentId) {
         Major major = new Major();
-        safeSelect("select * from major join student on user_id = ? and student.major_id = major.id",
+        safeSelect("select major_id, major.name, department.id, department.name from major\n" +
+                        "         join student on user_id = ? and student.major_id = major.id\n" +
+                        "         join department on major.department_id = department.id;",
                 stmt -> stmt.setInt(1, studentId),
                 resultSet -> {
                     major.id = resultSet.getInt(1);
                     major.name = resultSet.getString(2);
+                    major.department = new Department();
                     major.department.id = resultSet.getInt(3);
+                    major.department.name = resultSet.getString(4);
                 });
-        safeSelect("select name from department where id = ?",
-                stmt -> stmt.setInt(1, major.id),
-                resultSet -> major.department.name = resultSet.getString(1));
         return major;
     }
 }
