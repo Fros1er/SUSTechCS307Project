@@ -63,17 +63,23 @@ public class Util {
             }
             return res;
         } catch (SQLException e) {
-            e.printStackTrace();
             if (isInsertionFailed(e)) throw new IntegrityViolationException();
+            e.printStackTrace();
         }
         return 0;
     }
 
     public static int update(String sql, CheckedBiConsumer<Connection, PreparedStatement> consumer) {
         try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
-            PreparedStatement stmt = conn.prepareStatement(sql);
+            PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             consumer.accept(conn, stmt);
-            return stmt.executeUpdate();
+            stmt.executeUpdate();
+            ResultSet rs = stmt.getGeneratedKeys();
+            int res = 0;
+            if (rs.next()) {
+                res = rs.getInt(1);
+            }
+            return res;
         } catch (SQLException e) {
             if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
@@ -94,59 +100,102 @@ public class Util {
     private static final ExecutorService threadPool = Executors.newCachedThreadPool();
     public static Map<String, List<Future<?>>> threads = new ConcurrentHashMap<>();
 
+    private static final Map<String, List<BatchedStatement>> batchedStatements = new ConcurrentHashMap<>();
+
+
     public static int timeout = 100;
 
     public static void commitAllInsertion(String name) {
-        synchronized (Util.class) {
-            if (!threads.containsKey(name)) return;
-            threads.get(name).forEach(v -> {
-                try {
-                    v.get();
-                } catch (InterruptedException | ExecutionException e) {
-                    e.printStackTrace();
-                }
-            });
-            threads.get(name).clear();
+        if (Objects.equals(name, "user")) {
+            commitAllUpdates("instructor");
+            commitAllUpdates("student");
         }
+
+//        synchronized (Util.class) {
+//            if (!threads.containsKey(name)) return;
+//            threads.get(name).forEach(v -> {
+//                try {
+//                    v.get();
+//                } catch (InterruptedException | ExecutionException e) {
+//                    e.printStackTrace();
+//                }
+//            });
+//            threads.get(name).clear();
+//        }
     }
 
     public static void updateBatch(String name, String sql, CheckedConsumer<PreparedStatement> consumer) {
-        synchronized (Util.class) {
-            Connection conn;
-            PreparedStatement stmt;
-            if (!threads.containsKey(name)) {
-                threads.put(name, new ArrayList<>());
-            }
-            try {
-                if (!batchedQuery.containsKey(sql)) {
-                    conn = SQLDataSource.getInstance().getSQLConnection();
-                    stmt = conn.prepareStatement(sql);
-                    batchedQuery.put(sql, new Pair<>(conn, stmt));
-                    conn.setAutoCommit(false);
-                    threads.get(name).add(threadPool.submit(() -> {
-                        try {
-                            try {
-                                Thread.sleep(timeout);
-                            } catch (InterruptedException ignored) {
-                            } finally {
-                                batchedQuery.remove(sql);
-                                stmt.executeBatch();
-                                conn.commit();
-                                conn.close();
-                            }
-                        } catch (SQLException e) {
-                            e.printStackTrace();
-                        }
-                    }));
-                } else {
-                    Pair<Connection, PreparedStatement> p = batchedQuery.get(sql);
-                    conn = p.first;
-                    stmt = p.second;
+        try {
+            synchronized (Util.class) {
+                if (!batchedStatements.containsKey(name)) batchedStatements.put(name, new LinkedList<>());
+                boolean flag = true;
+                for (Iterator<BatchedStatement> it = batchedStatements.get(name).iterator(); it.hasNext(); ) {
+                    BatchedStatement batchedStatement = it.next();
+                    if (batchedStatement.hasFinished()) it.remove();
+                    else if (batchedStatement.addBatch(consumer)) {
+                        flag = false;
+                        break;
+                    }
                 }
-                consumer.accept(stmt);
-                stmt.addBatch();
-            } catch (SQLException e) {
-                e.printStackTrace();
+                if (flag) {
+                    BatchedStatement batchedStatement = new BatchedStatement(sql);
+                    batchedStatement.addBatch(consumer);
+                    batchedStatements.get(name).add(batchedStatement);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+//        synchronized (Util.class) {
+//            Connection conn;
+//            PreparedStatement stmt;
+//            if (!threads.containsKey(name)) {
+//                threads.put(name, new ArrayList<>());
+//            }
+//            try {
+//                if (!batchedQuery.containsKey(sql)) {
+//                    conn = SQLDataSource.getInstance().getSQLConnection();
+//                    stmt = conn.prepareStatement(sql);
+//                    batchedQuery.put(sql, new Pair<>(conn, stmt));
+//                    conn.setAutoCommit(false);
+//                    threads.get(name).add(threadPool.submit(() -> {
+//                        try {
+//                            try {
+//                                Thread.sleep(timeout);
+//                            } catch (InterruptedException ignored) {
+//                            } finally {
+//                                batchedQuery.remove(sql);
+//                                stmt.executeBatch();
+//                                conn.commit();
+//                                conn.close();
+//                            }
+//                        } catch (SQLException e) {
+//                            e.printStackTrace();
+//                        }
+//                    }));
+//                } else {
+//                    Pair<Connection, PreparedStatement> p = batchedQuery.get(sql);
+//                    conn = p.first;
+//                    stmt = p.second;
+//                }
+//                consumer.accept(stmt);
+//                stmt.addBatch();
+//            } catch (SQLException e) {
+//                e.printStackTrace();
+//            }
+//        }
+    }
+
+    public static void commitAllUpdates(String name) {
+        synchronized (Util.class) {
+            if (batchedStatements.containsKey(name)) {
+                if (batchedStatements.get(name).isEmpty()) return;
+                for (BatchedStatement batchedStatement : batchedStatements.get(name)) {
+                    System.out.println("Joining: " + name);
+                    batchedStatement.join();
+                }
+                batchedStatements.get(name).clear();
             }
         }
     }

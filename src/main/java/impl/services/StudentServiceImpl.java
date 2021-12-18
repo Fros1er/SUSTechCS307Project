@@ -21,7 +21,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
-        updateBatch("user", "SELECT insert_student(?, ?, ?, ?)",
+        updateBatch("student", "SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
                     stmt.setString(2, getFullName(firstName, lastName));
@@ -34,12 +34,14 @@ public class StudentServiceImpl implements StudentService {
     public List<CourseSearchEntry> searchCourse(int studentId, int semesterId, @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor, @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, CourseType searchCourseType, boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
         commitAllEnrolledCourseInsertion();
         commitAllInsertion("user");
-        StringBuilder sql1 = new StringBuilder("select * from section join class on semester_id = ? and section.id = class.section_id");
+        StringBuilder sql1 = new StringBuilder("select section.id,section_name,section.course_id,semester_id,total_capacity,left_capacity,class.id,instructor_id\n" +
+                ",day_of_week,week_list,class_start,class_end,location,course_name,credit,hour,grading,full_name,enrolled_date from section join class on semester_id = ? and section.id = class.section_id");
         StringBuilder sql2 = new StringBuilder(" join course on section.course_id = course.id");
         StringBuilder sql3 = new StringBuilder(" join \"user\" on \"user\".id = instructor_id");
-        StringBuilder sql4 = new StringBuilder(" join student on user_id = ? join major_course");
-        String sql5 = "";
-        String sql6 = " order by course.id,course_name limit ? offset ?;";
+        StringBuilder sql4 = new StringBuilder(" join student on user_id = ?");
+        StringBuilder sql5 = new StringBuilder();
+        String sql6 = "";
+        String sql7 = " order by course.id,course_name limit ? offset ?;";
         if (searchCid != null) {
             sql2.append(" and course.id = '").append(searchCid).append("'");
         }
@@ -66,43 +68,33 @@ public class StudentServiceImpl implements StudentService {
             }
         }
         boolean useType = false;
-        boolean situation = false;
         switch (searchCourseType) {
             case ALL: {
-                situation=true;
                 break;
             }
             case MAJOR_COMPULSORY:
             case MAJOR_ELECTIVE: {
-                sql4.append(" on student.major_id = major_course.major_id and type = CAST(? AS majorcoursetype)");
+                sql5.append(" join major_course on student.major_id = major_course.major_id and type = CAST(? AS majorcoursetype)");
                 useType = true;
                 break;
             }
             case CROSS_MAJOR: {
-                sql4.append(" on student.major_id != major_course.major_id");
+                sql5.append(" join major_course on student.major_id != major_course.major_id");
                 break;
             }
             case PUBLIC: {
-                sql4.append(" on course.id != major_course.course_id");
+                sql5.append(" join major_course on course.id != major_course.course_id");
                 break;
             }
         }
         if (ignoreFull) {
             sql1.append(" and left_capacity > 0");
         }
-        boolean igp = true;
         if (!ignoreMissingPrerequisites) {
-            igp=false;
-            if (!situation) {
-                sql4.append(" and is_prerequisite_satisfied(student.user_id, course.id) = true");
-            } else  {
-                sql4.append(" on is_prerequisite_satisfied(student.user_id, course.id) = true");
-            }
+            sql4.append(" and is_prerequisite_satisfied(student.user_id, course.id) = true");
         }
-        if (igp && situation)
-            sql4.append(" on false");
         if (ignorePassed) {
-            sql5 = " join student_course on section.id = student_course.section_id and student_id = student.user_id and grade >= 60";
+            sql6 = " join student_course on section.id = student_course.section_id and student_id = student.user_id and grade >= 60";
         }
         HashMap<String, String[]> enrolledCourse = new HashMap<>();
         for (DayOfWeek d : DayOfWeek.values()) {
@@ -118,8 +110,7 @@ public class StudentServiceImpl implements StudentService {
                     enrolledCourse.get(weekday)[resultSet.getInt(4)] = String.format("%s[%s]", resultSet.getString(3), resultSet.getString(2));
                 });
         StringBuilder sql0 = new StringBuilder();
-        sql0.append(sql1).append(sql2).append(sql3).append(sql4).append(sql5).append(sql6);
-        List<CourseSearchEntry> list = new ArrayList<>();
+        sql0.append(sql1).append(sql2).append(sql3).append(sql4).append(sql5).append(sql6).append(sql7);
         HashMap<Integer, CourseSearchEntry> buffer = new HashMap<>();
         boolean finalUseType = useType;
         safeSelect(sql0.toString(),
@@ -146,22 +137,22 @@ public class StudentServiceImpl implements StudentService {
                     CourseSectionClass tem = new CourseSectionClass();
                     tem.instructor = new Instructor();
                     course.id = resultSet.getString(3);
-                    course.name = resultSet.getString(16);
-                    course.classHour = resultSet.getInt(18);
-                    course.credit = resultSet.getInt(17);
-                    course.grading = Course.CourseGrading.valueOf(resultSet.getString(19));
+                    course.name = resultSet.getString(14);
+                    course.classHour = resultSet.getInt(16);
+                    course.credit = resultSet.getInt(15);
+                    course.grading = Course.CourseGrading.valueOf(resultSet.getString(17));
                     section.id = resultSet.getInt(1);
                     section.name = resultSet.getString(2);
                     section.totalCapacity = resultSet.getInt(5);
                     section.leftCapacity = resultSet.getInt(6);
                     tem.id = resultSet.getInt(7);
-                    tem.instructor.id = resultSet.getInt(20);
-                    tem.instructor.fullName = resultSet.getString(21);
-                    tem.classBegin = resultSet.getShort(12);
-                    tem.classEnd = resultSet.getShort(13);
-                    tem.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(10));
-                    tem.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(11).getArray()));
-                    tem.location = resultSet.getString(14);
+                    tem.instructor.id = resultSet.getInt(8);
+                    tem.instructor.fullName = resultSet.getString(18);
+                    tem.classBegin = resultSet.getShort(11);
+                    tem.classEnd = resultSet.getShort(12);
+                    tem.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(9));
+                    tem.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(10).getArray()));
+                    tem.location = resultSet.getString(13);
                     boolean sw = true;
                     if (!ignoreConflict) {
                         if (enrolledCourse.get(tem.dayOfWeek.name())[tem.classBegin] != null) {
@@ -183,7 +174,7 @@ public class StudentServiceImpl implements StudentService {
                     }
                 }
         );
-        return list;
+        return new ArrayList<>(buffer.values());
     }
 
     @Override
@@ -195,7 +186,7 @@ public class StudentServiceImpl implements StudentService {
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
         commitAllInsertion("student_course_add");
-        updateBatch("student_course_remove", "delete from public.student_course where student_id = ? and section_id = ?",
+        update("delete from public.student_course where student_id = ? and section_id = ?",
                 stmt -> {
                     stmt.setInt(1, studentId);
                     stmt.setInt(2, sectionId);
@@ -355,5 +346,10 @@ public class StudentServiceImpl implements StudentService {
                     major.department.name = resultSet.getString(4);
                 });
         return major;
+    }
+
+    public static void commitAllEnrolledCourseInsertion() {
+        commitAllInsertion("student_course_add");
+        commitAllInsertion("student_course_remove");
     }
 }

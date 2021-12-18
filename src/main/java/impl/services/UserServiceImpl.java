@@ -17,7 +17,7 @@ public class UserServiceImpl implements UserService {
 
     public static String getFullName(String firstName, String lastName) {
         StringBuilder fullName = new StringBuilder(firstName);
-        if (!firstName.matches("^[a-zA-Z ]*") && !lastName.matches("^[a-zA-Z ]*"))
+        if (firstName.matches("^[a-zA-Z ]*") && lastName.matches("^[a-zA-Z ]*"))
             fullName.append(' ');
         fullName.append(lastName);
         return fullName.toString();
