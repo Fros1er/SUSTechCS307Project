@@ -15,7 +15,7 @@ import static impl.utils.Util.updateBatch;
 public class InstructorServiceImpl implements InstructorService {
     @Override
     public void addInstructor(int userId, String firstName, String lastName) {
-        updateBatch("SELECT insert_instructor(?, ?)",
+        updateBatch("user", "SELECT insert_instructor(?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
                     stmt.setString(2, getFullName(firstName, lastName));
