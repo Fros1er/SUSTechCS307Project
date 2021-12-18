@@ -6,6 +6,7 @@ import cn.edu.sustech.cs307.dto.prerequisite.AndPrerequisite;
 import cn.edu.sustech.cs307.dto.prerequisite.CoursePrerequisite;
 import cn.edu.sustech.cs307.dto.prerequisite.OrPrerequisite;
 import cn.edu.sustech.cs307.dto.prerequisite.Prerequisite;
+import cn.edu.sustech.cs307.exception.EntityNotFoundException;
 import cn.edu.sustech.cs307.exception.IntegrityViolationException;
 import cn.edu.sustech.cs307.service.CourseService;
 
@@ -160,35 +161,83 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public List<CourseSection> getCourseSectionsInSemester(String courseId, int semesterId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
-
+        List<CourseSection> res = new ArrayList<>();
+        if (!safeSelect("select * from section where course_id = ? and semester_id = ?",
+                stmt -> {
+                    stmt.setString(1, courseId);
+                    stmt.setInt(2, semesterId);
+                },
+                resultSet -> res.add(getCourseSectionFromResultSet(resultSet)))) {
+            throw new EntityNotFoundException();
+        }
+        return res;
     }
 
     @Override
     public Course getCourseBySection(int sectionId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
+        Course res = new Course();
+        if (!safeSelect("select * from course join section s on course.id = s.course_id where s.id = ?",
+                stmt -> stmt.setInt(1, sectionId),
+                resultSet -> {
+                    res.id = resultSet.getString(1);
+                    res.name = resultSet.getString(2);
+                    res.credit = resultSet.getInt(3);
+                    res.classHour = resultSet.getInt(4);
+                    res.grading = Course.CourseGrading.values()[resultSet.getShort(5)];
+                })) {
+            throw new EntityNotFoundException();
+        }
+        return res;
     }
 
     @Override
     public List<CourseSectionClass> getCourseSectionClasses(int sectionId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
-
+        List<CourseSectionClass> res = new ArrayList<>();
+        if (!safeSelect("select class.id, u.id, full_name, day_of_week, week_list, class_start, class_end, location from class\n" +
+                        "join instructor i on i.user_id = class.instructor_id\n" +
+                        "join \"user\" u on u.id = i.user_id\n" +
+                        "where section_id = ?",
+                stmt -> stmt.setInt(1, sectionId),
+                resultSet -> res.add(getCourseSectionClassFromResultSet(resultSet)))
+        ) {
+            throw new EntityNotFoundException();
+        }
+        return res;
     }
 
     @Override
     public CourseSection getCourseSectionByClass(int classId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
-
+        CourseSection res = new CourseSection();
+        if (!safeSelect("select distinct section.id, section_name, total_capacity, left_capacity\n" +
+                        "from section join course c on c.id = section.course_id\n" +
+                        "where c.id = ?",
+                stmt -> stmt.setInt(1, classId),
+                resultSet -> {
+                    res.id = resultSet.getInt(1);
+                    res.name = resultSet.getString(2);
+                    res.totalCapacity = resultSet.getInt(3);
+                    res.leftCapacity = resultSet.getInt(4);
+                })) {
+            throw new EntityNotFoundException();
+        }
+        return res;
     }
 
     @Override
     public List<Student> getEnrolledStudentsInSemester(String courseId, int semesterId) {
-        //TODO: Support
-        throw new UnsupportedOperationException();
+        List<Student> res = new ArrayList<>();
+        safeSelect("select enrolled_date, m.id, m.name, d.id, d.name\n" +
+                        "from student join student_course sc on student.user_id = sc.student_id\n" +
+                        "join section s on s.id = sc.section_id\n" +
+                        "join major m on student.major_id = m.id\n" +
+                        "join department d on m.department_id = d.id\n" +
+                        "where course_id = ? and section_id = ?",
+                stmt -> {
+                    stmt.setString(1, courseId);
+                    stmt.setInt(2, semesterId);
+                },
+                resultSet -> res.add(getStudentFromResultSet(resultSet)));
+        return res;
     }
 
     private Course getCourseFromResultSet(ResultSet resultSet) throws SQLException {
@@ -199,5 +248,37 @@ public class CourseServiceImpl implements CourseService {
         c.classHour = resultSet.getInt(4);
         c.grading = Course.CourseGrading.valueOf(resultSet.getString(5));
         return c;
+    }
+
+    private CourseSection getCourseSectionFromResultSet(ResultSet resultSet) throws SQLException {
+        CourseSection cs = new CourseSection();
+        cs.id = Integer.parseInt(resultSet.getString(1));
+        cs.name = resultSet.getString(2);
+        cs.totalCapacity = resultSet.getInt(3);
+        cs.leftCapacity = resultSet.getInt(4);
+        return cs;
+    }
+
+    private CourseSectionClass getCourseSectionClassFromResultSet(ResultSet resultSet) throws SQLException {
+        CourseSectionClass csc = new CourseSectionClass();
+        csc.id = resultSet.getInt(1);
+        csc.instructor.id = resultSet.getInt(2);
+        csc.instructor.fullName = resultSet.getString(3);
+        csc.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(4));
+        csc.weekList = (Set<Short>) resultSet.getArray(5);
+        csc.classBegin = resultSet.getShort(6);
+        csc.classEnd = resultSet.getShort(7);
+        csc.location = resultSet.getString(8);
+        return csc;
+    }
+
+    private Student getStudentFromResultSet(ResultSet resultSet) throws SQLException {
+        Student s = new Student();
+        s.enrolledDate = resultSet.getDate(1);
+        s.major.id = resultSet.getInt(2);
+        s.major.name = resultSet.getString(3);
+        s.major.department.id = resultSet.getInt(4);
+        s.major.department.name = resultSet.getString(5);
+        return s;
     }
 }
