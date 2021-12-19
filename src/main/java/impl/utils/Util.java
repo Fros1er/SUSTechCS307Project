@@ -47,6 +47,7 @@ public class Util {
             return select(sql, consumer, resHandler);
         } catch (SQLException e) {
             e.printStackTrace();
+            System.out.println(sql);
         }
         return false;
     }

@@ -1,14 +1,19 @@
 package impl.services;
 
+import cn.edu.sustech.cs307.database.SQLDataSource;
 import cn.edu.sustech.cs307.dto.*;
 import cn.edu.sustech.cs307.dto.grade.Grade;
 import cn.edu.sustech.cs307.dto.grade.HundredMarkGrade;
 import cn.edu.sustech.cs307.dto.grade.PassOrFailGrade;
+import cn.edu.sustech.cs307.exception.IntegrityViolationException;
 import cn.edu.sustech.cs307.service.StudentService;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.sql.Connection;
 import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,6 +26,10 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
+        if (safeSelect("SELECT * FROM \"user\" WHERE id = ?",
+                stmt -> stmt.setInt(1, userId),
+                resultSet -> {
+                })) throw new IntegrityViolationException();
         updateBatch("student", "SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
@@ -38,7 +47,7 @@ public class StudentServiceImpl implements StudentService {
                 ",day_of_week,week_list,class_start,class_end,location,course_name,credit,hour,grading,full_name,enrolled_date from section join class on semester_id = ? and section.id = class.section_id");
         StringBuilder sql2 = new StringBuilder(" join course on section.course_id = course.id");
         StringBuilder sql3 = new StringBuilder(" join (select * from instructor join \"user\" u on instructor.user_id = u.id) teacher");
-        StringBuilder sql4 = new StringBuilder(" join student on user_id = ?");
+        StringBuilder sql4 = new StringBuilder(" join student on student.user_id = ?");
         StringBuilder sql5 = new StringBuilder();
         String sql6 = "";
         String sql7 = " order by course.id,course_name limit ? offset ?;";
@@ -46,10 +55,10 @@ public class StudentServiceImpl implements StudentService {
             sql2.append(" and course.id = '").append(searchCid).append("'");
         }
         if (searchName != null) {
-            sql2.append(" and course_name = '").append(searchName).append("'");
+            sql2.append(" and course_name like '%' || '").append(searchName).append("' || '%'");
         }
         if (searchInstructor != null) {
-            sql3.append(" on full_name like '%'|| ").append(searchInstructor).append("||'%'");
+            sql3.append(" on full_name like '%'|| '").append(searchInstructor).append("' ||'%'");
         } else {
             sql3.append(" on false");
         }
@@ -188,11 +197,34 @@ public class StudentServiceImpl implements StudentService {
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
         commitAllInsertion("student_course_add");
-        update("delete from public.student_course where student_id = ? and section_id = ?",
+//        update("delete from public.student_course where student_id = ? and section_id = ?",
+//                stmt -> {
+//                    stmt.setInt(1, studentId);
+//                    stmt.setInt(2, sectionId);
+//                });
+//        try {
+//            if (dropConn == null) {
+//                dropConn = SQLDataSource.getInstance().getSQLConnection();
+//            }
+//            if (dropStmt == null) {
+//                System.out.println("a");
+//                dropStmt = dropConn.prepareStatement("delete from student_course where student_id = ? and section_id = ? and grade is null");
+//            }
+//            dropStmt.setInt(1, studentId);
+//            dropStmt.setInt(2, sectionId);
+//            if (dropStmt.executeUpdate() == 0) {
+//                throw new IllegalStateException();
+//            }
+//        } catch (SQLException e) {
+//            e.printStackTrace();
+//        }
+        if (update("delete from student_course where student_id = ? and section_id = ? and grade is null",
                 stmt -> {
                     stmt.setInt(1, studentId);
                     stmt.setInt(2, sectionId);
-                });
+                }) == 0) {
+            throw new IllegalStateException();
+        }
     }
 
     @Override
@@ -337,7 +369,7 @@ public class StudentServiceImpl implements StudentService {
     public Major getStudentMajor(int studentId) {
         Major major = new Major();
         safeSelect("select major_id, major.name, department.id, department.name from major\n" +
-                        "         join student on user_id = ? and student.major_id = major.id\n" +
+                        "         join student on student.user_id = ? and student.major_id = major.id\n" +
                         "         join department on major.department_id = department.id;",
                 stmt -> stmt.setInt(1, studentId),
                 resultSet -> {
