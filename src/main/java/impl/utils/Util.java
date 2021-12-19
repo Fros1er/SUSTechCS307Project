@@ -129,6 +129,7 @@ public class Util {
                 }
             }
         } catch (SQLException e) {
+            if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
         }
     }

@@ -26,10 +26,6 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
-        if (safeSelect("SELECT * FROM \"user\" WHERE id = ?",
-                stmt -> stmt.setInt(1, userId),
-                resultSet -> {
-                })) throw new IntegrityViolationException();
         updateBatch("student", "SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
