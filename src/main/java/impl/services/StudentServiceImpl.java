@@ -37,7 +37,7 @@ public class StudentServiceImpl implements StudentService {
         StringBuilder sql1 = new StringBuilder("select section.id,section_name,section.course_id,semester_id,total_capacity,left_capacity,class.id,instructor_id\n" +
                 ",day_of_week,week_list,class_start,class_end,location,course_name,credit,hour,grading,full_name,enrolled_date from section join class on semester_id = ? and section.id = class.section_id");
         StringBuilder sql2 = new StringBuilder(" join course on section.course_id = course.id");
-        StringBuilder sql3 = new StringBuilder(" join \"user\" on \"user\".id = instructor_id");
+        StringBuilder sql3 = new StringBuilder(" join (select * from instructor join \"user\" u on instructor.user_id = u.id) teacher");
         StringBuilder sql4 = new StringBuilder(" join student on user_id = ?");
         StringBuilder sql5 = new StringBuilder();
         String sql6 = "";
@@ -49,7 +49,9 @@ public class StudentServiceImpl implements StudentService {
             sql2.append(" and course_name = '").append(searchName).append("'");
         }
         if (searchInstructor != null) {
-            sql3.append(" and full_name = '").append(searchInstructor).append("'");
+            sql3.append(" on full_name like '%'|| ").append(searchInstructor).append("||'%'");
+        } else {
+            sql3.append(" on false");
         }
         if (searchDayOfWeek != null) {
             sql1.append(" and day_of_week = '").append(searchDayOfWeek.name()).append("'");
@@ -124,10 +126,10 @@ public class StudentServiceImpl implements StudentService {
                             stmt.setString(3, "Elective");
                         }
                         stmt.setInt(4, pageSize);
-                        stmt.setInt(5, pageIndex * (pageSize - 1));
+                        stmt.setInt(5, pageSize * pageIndex);
                     } else {
                         stmt.setInt(3, pageSize);
-                        stmt.setInt(4, pageIndex * (pageSize - 1));
+                        stmt.setInt(4, pageSize * pageIndex);
                     }
 
                 },
