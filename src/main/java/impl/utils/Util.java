@@ -103,8 +103,9 @@ public class Util {
         if (Objects.equals(name, "user")) {
             commitAllUpdates("instructor");
             commitAllUpdates("student");
-        } else {
-            commitAllUpdates(name);
+        } else if (Objects.equals(name, "student_course")) {
+            commitAllUpdates("student_course_a");
+            commitAllUpdates("student_course_b");
         }
     }
 

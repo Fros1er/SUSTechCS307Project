@@ -210,7 +210,7 @@ public class StudentServiceImpl implements StudentService {
     public void addEnrolledCourseWithGrade(int studentId, int sectionId, @Nullable Grade grade) {
         commitAllInsertion("user");
         if (grade != null) {
-            updateBatch("student_course", "insert into public.student_course(student_id,section_id,grade) values (?,?,?)",
+            updateBatch("student_course_a", "insert into public.student_course(student_id,section_id,grade) values (?,?,?)",
                     stmt -> {
                         stmt.setInt(1, studentId);
                         stmt.setInt(2, sectionId);
@@ -227,7 +227,7 @@ public class StudentServiceImpl implements StudentService {
                         }));
                     });
         } else {
-            updateBatch("student_course", "insert into public.student_course(student_id,section_id) values (?,?)",
+            updateBatch("student_course_b", "insert into public.student_course(student_id,section_id) values (?,?)",
                     stmt -> {
                         stmt.setInt(1, studentId);
                         stmt.setInt(2, sectionId);
