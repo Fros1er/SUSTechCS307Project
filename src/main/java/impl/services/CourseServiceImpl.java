@@ -265,7 +265,7 @@ public class CourseServiceImpl implements CourseService {
         csc.instructor.id = resultSet.getInt(2);
         csc.instructor.fullName = resultSet.getString(3);
         csc.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(4));
-        csc.weekList = (Set<Short>) resultSet.getArray(5);
+        csc.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(5).getArray()));
         csc.classBegin = resultSet.getShort(6);
         csc.classEnd = resultSet.getShort(7);
         csc.location = resultSet.getString(8);

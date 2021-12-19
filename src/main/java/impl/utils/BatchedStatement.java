@@ -19,8 +19,10 @@ public class BatchedStatement {
     private final Object lock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean finished = new AtomicBoolean(false);
+    private final long start;
 
-    public BatchedStatement(String sql) throws SQLException {
+    public BatchedStatement(String sql, String name) throws SQLException {
+        start = System.nanoTime();
         countdown.set(COUNTDOWN_TIME);
         conn = SQLDataSource.getInstance().getSQLConnection();
         conn.setAutoCommit(false);
@@ -40,7 +42,7 @@ public class BatchedStatement {
                     conn.commit();
                     conn.close();
                     finished.set(true);
-                    System.out.println("User load finished");
+                    System.out.printf("Batch %s finished, used %.2fms\n", name, (System.nanoTime() - start) / 1000000.0);
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }

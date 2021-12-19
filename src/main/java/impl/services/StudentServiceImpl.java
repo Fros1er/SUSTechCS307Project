@@ -41,7 +41,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public List<CourseSearchEntry> searchCourse(int studentId, int semesterId, @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor, @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, CourseType searchCourseType, boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
-        commitAllEnrolledCourseInsertion();
+        commitAllInsertion("student_course");
         commitAllInsertion("user");
         StringBuilder sql1 = new StringBuilder("select section.id,section_name,section.course_id,semester_id,total_capacity,left_capacity,class.id,instructor_id\n" +
                 ",day_of_week,week_list,class_start,class_end,location,course_name,credit,hour,grading,full_name,enrolled_date from section join class on semester_id = ? and section.id = class.section_id");
@@ -196,28 +196,7 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
-        commitAllInsertion("student_course_add");
-//        update("delete from public.student_course where student_id = ? and section_id = ?",
-//                stmt -> {
-//                    stmt.setInt(1, studentId);
-//                    stmt.setInt(2, sectionId);
-//                });
-//        try {
-//            if (dropConn == null) {
-//                dropConn = SQLDataSource.getInstance().getSQLConnection();
-//            }
-//            if (dropStmt == null) {
-//                System.out.println("a");
-//                dropStmt = dropConn.prepareStatement("delete from student_course where student_id = ? and section_id = ? and grade is null");
-//            }
-//            dropStmt.setInt(1, studentId);
-//            dropStmt.setInt(2, sectionId);
-//            if (dropStmt.executeUpdate() == 0) {
-//                throw new IllegalStateException();
-//            }
-//        } catch (SQLException e) {
-//            e.printStackTrace();
-//        }
+        commitAllInsertion("student_course");
         if (update("delete from student_course where student_id = ? and section_id = ? and grade is null",
                 stmt -> {
                     stmt.setInt(1, studentId);
@@ -230,9 +209,8 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public void addEnrolledCourseWithGrade(int studentId, int sectionId, @Nullable Grade grade) {
         commitAllInsertion("user");
-        commitAllInsertion("student_course_remove");
         if (grade != null) {
-            updateBatch("student_course_add", "insert into public.student_course(student_id,section_id,grade) values (?,?,?)",
+            updateBatch("student_course", "insert into public.student_course(student_id,section_id,grade) values (?,?,?)",
                     stmt -> {
                         stmt.setInt(1, studentId);
                         stmt.setInt(2, sectionId);
@@ -249,7 +227,7 @@ public class StudentServiceImpl implements StudentService {
                         }));
                     });
         } else {
-            updateBatch("student_course_add", "insert into public.student_course(student_id,section_id) values (?,?)",
+            updateBatch("student_course", "insert into public.student_course(student_id,section_id) values (?,?)",
                     stmt -> {
                         stmt.setInt(1, studentId);
                         stmt.setInt(2, sectionId);
@@ -259,7 +237,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void setEnrolledCourseGrade(int studentId, int sectionId, Grade grade) {
-        commitAllEnrolledCourseInsertion();
+        commitAllInsertion("student_course");
         update("update public.student_course set grade = ? where student_id = ? and section_id = ?",
                 stmt -> {
                     stmt.setInt(2, studentId);
@@ -280,7 +258,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public Map<Course, Grade> getEnrolledCoursesAndGrades(int studentId, @Nullable Integer semesterId) {
-        commitAllEnrolledCourseInsertion();
+        commitAllInsertion("student_course");
         Map<Course, Grade> result = new HashMap<>();
         Course tem = new Course();
         StringBuilder sql = new StringBuilder("select course.id, course.course_name, course.credit, course.hour, course.grading, grade " +
@@ -380,10 +358,5 @@ public class StudentServiceImpl implements StudentService {
                     major.department.name = resultSet.getString(4);
                 });
         return major;
-    }
-
-    public static void commitAllEnrolledCourseInsertion() {
-        commitAllInsertion("student_course_add");
-        commitAllInsertion("student_course_remove");
     }
 }

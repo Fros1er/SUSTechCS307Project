@@ -97,32 +97,15 @@ public class Util {
         return false;
     }
 
-    private static final Map<String, Pair<Connection, PreparedStatement>> batchedQuery = new ConcurrentHashMap<>();
-    private static final ExecutorService threadPool = Executors.newCachedThreadPool();
-    public static Map<String, List<Future<?>>> threads = new ConcurrentHashMap<>();
-
     private static final Map<String, List<BatchedStatement>> batchedStatements = new ConcurrentHashMap<>();
-
-
-    public static int timeout = 100;
 
     public static void commitAllInsertion(String name) {
         if (Objects.equals(name, "user")) {
             commitAllUpdates("instructor");
             commitAllUpdates("student");
+        } else {
+            commitAllUpdates(name);
         }
-
-//        synchronized (Util.class) {
-//            if (!threads.containsKey(name)) return;
-//            threads.get(name).forEach(v -> {
-//                try {
-//                    v.get();
-//                } catch (InterruptedException | ExecutionException e) {
-//                    e.printStackTrace();
-//                }
-//            });
-//            threads.get(name).clear();
-//        }
     }
 
     public static void updateBatch(String name, String sql, CheckedConsumer<PreparedStatement> consumer) {
@@ -139,7 +122,7 @@ public class Util {
                     }
                 }
                 if (flag) {
-                    BatchedStatement batchedStatement = new BatchedStatement(sql);
+                    BatchedStatement batchedStatement = new BatchedStatement(sql, name);
                     batchedStatement.addBatch(consumer);
                     batchedStatements.get(name).add(batchedStatement);
                 }
@@ -147,45 +130,6 @@ public class Util {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
-//        synchronized (Util.class) {
-//            Connection conn;
-//            PreparedStatement stmt;
-//            if (!threads.containsKey(name)) {
-//                threads.put(name, new ArrayList<>());
-//            }
-//            try {
-//                if (!batchedQuery.containsKey(sql)) {
-//                    conn = SQLDataSource.getInstance().getSQLConnection();
-//                    stmt = conn.prepareStatement(sql);
-//                    batchedQuery.put(sql, new Pair<>(conn, stmt));
-//                    conn.setAutoCommit(false);
-//                    threads.get(name).add(threadPool.submit(() -> {
-//                        try {
-//                            try {
-//                                Thread.sleep(timeout);
-//                            } catch (InterruptedException ignored) {
-//                            } finally {
-//                                batchedQuery.remove(sql);
-//                                stmt.executeBatch();
-//                                conn.commit();
-//                                conn.close();
-//                            }
-//                        } catch (SQLException e) {
-//                            e.printStackTrace();
-//                        }
-//                    }));
-//                } else {
-//                    Pair<Connection, PreparedStatement> p = batchedQuery.get(sql);
-//                    conn = p.first;
-//                    stmt = p.second;
-//                }
-//                consumer.accept(stmt);
-//                stmt.addBatch();
-//            } catch (SQLException e) {
-//                e.printStackTrace();
-//            }
-//        }
     }
 
     public static void commitAllUpdates(String name) {
