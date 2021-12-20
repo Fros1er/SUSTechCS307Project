@@ -192,7 +192,22 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public EnrollResult enrollCourse(int studentId, int sectionId) {
-        throw new UnsupportedOperationException();
+        final EnrollResult[] res = new EnrollResult[1];
+        try {
+            select("select enroll_course(?, ?)",
+                    stmt -> {
+                        stmt.setInt(1, studentId);
+                        stmt.setInt(2, sectionId);
+                    },
+                    resultSet -> {
+                        res[0] = EnrollResult.valueOf(resultSet.getString(1));
+                    }
+            );
+        } catch (SQLException e) {
+            e.printStackTrace();
+            res[0] = EnrollResult.UNKNOWN_ERROR;
+        }
+        return res[0];
     }
 
     @Override
