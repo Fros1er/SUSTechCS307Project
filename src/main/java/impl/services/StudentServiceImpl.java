@@ -10,15 +10,13 @@ import cn.edu.sustech.cs307.service.StudentService;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.sql.Connection;
 import java.sql.Date;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static impl.services.UserServiceImpl.getFullName;
+import static impl.services.MajorServiceImpl.hasMajor;
+import static impl.services.UserServiceImpl.*;
 import static impl.utils.Util.*;
 
 @ParametersAreNonnullByDefault
@@ -26,6 +24,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
+        if (!hasMajor(majorId) || hasUser(userId)) throw new IntegrityViolationException();
         updateBatch("student", "SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
@@ -33,6 +32,7 @@ public class StudentServiceImpl implements StudentService {
                     stmt.setInt(3, majorId);
                     stmt.setDate(4, enrolledDate);
                 });
+        addUser(userId);
     }
 
     @Override
