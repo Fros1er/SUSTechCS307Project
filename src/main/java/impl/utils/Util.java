@@ -52,6 +52,18 @@ public class Util {
         return false;
     }
 
+    public static int delete(String sql, CheckedConsumer<PreparedStatement> consumer) {
+        try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            consumer.accept(stmt);
+            return stmt.executeUpdate();
+        } catch (SQLException e) {
+            if (isInsertionFailed(e)) throw new IntegrityViolationException();
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
     public static int update(String sql, CheckedConsumer<PreparedStatement> consumer) {
         try (Connection conn = SQLDataSource.getInstance().getSQLConnection()) {
             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
@@ -129,7 +141,6 @@ public class Util {
                 }
             }
         } catch (SQLException e) {
-            if (isInsertionFailed(e)) throw new IntegrityViolationException();
             e.printStackTrace();
         }
     }
@@ -145,5 +156,18 @@ public class Util {
                 batchedStatements.get(name).clear();
             }
         }
+    }
+
+    public static void main(String[] args) {
+        updateBatch("a", "SELECT insert_instructor(?, ?)",
+                stmt -> {
+                    stmt.setInt(1, 1);
+                    stmt.setString(2, "a");
+                });
+        updateBatch("a", "SELECT insert_instructor(?, ?)",
+                stmt -> {
+                    stmt.setInt(1, 1);
+                    stmt.setString(2, "b");
+                });
     }
 }

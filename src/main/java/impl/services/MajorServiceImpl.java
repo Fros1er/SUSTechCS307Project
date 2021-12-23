@@ -10,25 +10,44 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static impl.utils.Util.*;
 
 @ParametersAreNonnullByDefault
 public class MajorServiceImpl implements MajorService {
+    public static Set<Integer> majorSet = new HashSet<>();
+    private static final ReentrantReadWriteLock majorSetLock = new ReentrantReadWriteLock(true);
+    static {
+        ReentrantReadWriteLock.WriteLock l = majorSetLock.writeLock();
+        l.lock();
+        safeSelect("select * from major", stmt -> {}, resultSet -> majorSet.add(resultSet.getInt(1)));
+        l.unlock();
+    }
+
     @Override
     public int addMajor(String name, int departmentId) {
-        return update("INSERT INTO public.major (id, name, department_id) VALUES (DEFAULT, ?, ?)", stmt -> {
+        ReentrantReadWriteLock.WriteLock l = majorSetLock.writeLock();
+        l.lock();
+        int res = update("INSERT INTO public.major (id, name, department_id) VALUES (DEFAULT, ?, ?)", stmt -> {
             stmt.setString(1, name);
             stmt.setInt(2, departmentId);
         });
+        majorSet.add(res);
+        l.unlock();
+        return res;
     }
 
     @Override
     public void removeMajor(int majorId) {
-        update("DELETE FROM public.major WHERE id = ?",
-                stmt -> stmt.setInt(1, majorId));
+        ReentrantReadWriteLock.WriteLock l = majorSetLock.writeLock();
+        l.lock();
+        if (delete("DELETE FROM public.major WHERE id = ?",
+                stmt -> stmt.setInt(1, majorId)) != 0) {
+            majorSet.remove(majorId);
+        }
+        l.unlock();
     }
 
     @Override
@@ -79,5 +98,13 @@ public class MajorServiceImpl implements MajorService {
                     stmt.setInt(1, majorId);
                     stmt.setString(2, courseId);
                 });
+    }
+
+    public static boolean hasMajor(int majorId) {
+        ReentrantReadWriteLock.ReadLock l = majorSetLock.readLock();
+        l.lock();
+        boolean res = majorSet.contains(majorId);
+        l.unlock();
+        return res;
     }
 }

@@ -10,15 +10,13 @@ import cn.edu.sustech.cs307.service.StudentService;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.sql.Connection;
 import java.sql.Date;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static impl.services.UserServiceImpl.getFullName;
+import static impl.services.MajorServiceImpl.hasMajor;
+import static impl.services.UserServiceImpl.*;
 import static impl.utils.Util.*;
 
 @ParametersAreNonnullByDefault
@@ -26,6 +24,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
+        if (!hasMajor(majorId) || hasUser(userId)) throw new IntegrityViolationException();
         updateBatch("student", "SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
@@ -33,18 +32,20 @@ public class StudentServiceImpl implements StudentService {
                     stmt.setInt(3, majorId);
                     stmt.setDate(4, enrolledDate);
                 });
+        addUser(userId);
     }
 
     @Override
     public List<CourseSearchEntry> searchCourse(int studentId, int semesterId, @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor, @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, CourseType searchCourseType, boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
         commitAllInsertion("student_course");
         commitAllInsertion("user");
-        StringBuilder sql1 = new StringBuilder("select section.id,section_name,course_id,total_capacity,left_capacity,course_name,credit,hour,grading\n" +
+        StringBuilder sql1 = new StringBuilder("select section.id,section_name,section.course_id,total_capacity,left_capacity,course_name,credit,hour,grading\n" +
                 "from section join course on section.course_id = course.id and semester_id = ? and left_capacity > 0");
-        StringBuilder sql2 = new StringBuilder("join student on student.user_id = ?");
+        StringBuilder sql2 = new StringBuilder(" join student on student.user_id = ?");
         StringBuilder sql3 = new StringBuilder();
         String sql4 = "";
-        String sql5 = " order by course.id,course_name || '[' || section.section_name || ']' limit ? offset ?;";
+        String sql5 = "";
+        String sql6 = " order by course.id,course_name || '[' || section.section_name || ']' limit ? offset ?;";
         //先找出section
         if (searchCid != null) {//course
             sql1.append(" and course.id = '").append(searchCid).append("'");
@@ -79,8 +80,8 @@ public class StudentServiceImpl implements StudentService {
             sql2.append(" and is_prerequisite_satisfied(student.user_id, course.id) = true");
         }
 //        if (!ignorePassed) {//course
-//            sql6 = " join student_course on section.id != student_course.section_id and student_id = student.user_id and grade >= 60";
-//        }先不写这个
+//            sql5 = " left join student_course on section.id = student_course.section_id and student_id = student.user_id and grade < 60";
+//        }
         HashMap<String, String[]> enrolledCourse = new HashMap<>();
         for (DayOfWeek d : DayOfWeek.values()) {
             enrolledCourse.put(d.name(), new String[10]);
@@ -95,7 +96,7 @@ public class StudentServiceImpl implements StudentService {
                     enrolledCourse.get(weekday)[resultSet.getInt(4)] = String.format("%s[%s]", resultSet.getString(3), resultSet.getString(2));
                 });
         StringBuilder sql0 = new StringBuilder();
-        sql0.append(sql1).append(sql2).append(sql3).append(sql4).append(sql5);
+        sql0.append(sql1).append(sql2).append(sql3).append(sql4).append(sql5).append(sql6);
         List<CourseSearchEntry> list = new ArrayList<>();
         boolean finalUseType = useType;
         safeSelect(sql0.toString(),
@@ -134,31 +135,29 @@ public class StudentServiceImpl implements StudentService {
                     }
                 );
         for (CourseSearchEntry entry:list){
-            StringBuilder sql6 = new StringBuilder("select * from class join (select * from instructor join \"user\" u on instructor.user_id = u.id) teacher on user_id = class.instructor_id and section_id = ?;");
+            StringBuilder sql7 = new StringBuilder("select * from class join (select * from instructor join \"user\" u on instructor.user_id = u.id) teacher on user_id = class.instructor_id and section_id = ?");
             if (searchInstructor != null) {//class
-                sql6.append(" on full_name like '%'|| '").append(searchInstructor).append("' ||'%'");
-            } else {
-                sql6.append(" on false");
+                sql7.append(" and full_name like '%'|| '").append(searchInstructor).append("' ||'%'");
             }
             if (searchDayOfWeek != null) {//class
-                sql6.append(" and day_of_week = '").append(searchDayOfWeek.name()).append("'");
+                sql7.append(" and day_of_week = '").append(searchDayOfWeek.name()).append("'");
             }
             if (searchClassTime != null) {//class
-                sql6.append(searchClassTime).append(" between class_start and class_end");
+                sql7.append(" and ").append(" ").append(searchClassTime).append(" between class_start and class_end");
             }
             if (searchClassLocations != null && !searchClassLocations.isEmpty()) {
-                sql1.append(" and location in (");//class
+                sql7.append(" and location in (");//class
                 for (int i = 0; i < searchClassLocations.size(); i++) {
                     if (i == searchClassLocations.size() - 1) {
-                        sql6.append("'").append(searchClassLocations.get(i)).append("')");
+                        sql7.append("'").append(searchClassLocations.get(i)).append("')");
                     } else {
-                        sql6.append("'").append(searchClassLocations.get(i)).append("',");
+                        sql7.append("'").append(searchClassLocations.get(i)).append("',");
                     }
                 }
             }
             entry.sectionClasses = new HashSet<>();
             entry.conflictCourseNames = new ArrayList<>();
-            safeSelect(sql6.toString(),
+            safeSelect(sql7.toString(),
                         stmt-> stmt.setInt(1,entry.section.id),
                         resultSet -> {
                             CourseSectionClass sectionClass = new CourseSectionClass();
