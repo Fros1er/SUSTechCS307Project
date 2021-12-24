@@ -312,7 +312,8 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public CourseTable getCourseTable(int studentId, Date date) {
         CourseTable courseTable = new CourseTable();
-        courseTable.table = new HashMap<>();
+        courseTable.table = new LinkedHashMap<>();
+        for (DayOfWeek day : DayOfWeek.values()) courseTable.table.put(day, new HashSet<>());
         safeSelect("select * from get_course_table(?, ?)",
                 stmt -> {
                     stmt.setInt(1, studentId);
@@ -327,9 +328,7 @@ public class StudentServiceImpl implements StudentService {
                     entry.classBegin = resultSet.getShort(5);
                     entry.classEnd = resultSet.getShort(6);
                     entry.location = resultSet.getString(7);
-                    DayOfWeek day = DayOfWeek.valueOf(resultSet.getString(1));
-                    if (!courseTable.table.containsKey(day)) courseTable.table.put(day, new HashSet<>());
-                    courseTable.table.get(day).add(entry);
+                    courseTable.table.get(DayOfWeek.valueOf(resultSet.getString(1))).add(entry);
                 });
         return courseTable;
     }
