@@ -313,36 +313,20 @@ public class StudentServiceImpl implements StudentService {
     public CourseTable getCourseTable(int studentId, Date date) {
         CourseTable courseTable = new CourseTable();
         courseTable.table = new HashMap<>();
-        safeSelect("select day_of_week,section_name,instructor_id,full_name,class_start,class_end,location from class join (\n" +
-                        "select * from student_course join (\n" +
-                        "select section_name,section.id,begin from section join (\n" +
-                        "select id,begin from semester where ? between begin and \"end\") t1\n" +
-                        "on t1.id = section.semester_id) t2\n" +
-                        "on section_id = id and student_id = ?) t3\n" +
-                        "on class.section_id = t3.section_id and findWeek(begin,?) = ANY (week_list)\n" +
-                        "join \"user\" on instructor_id = \"user\".id\n" +
-                        "order by day_of_week;",
+        safeSelect("select get_course_table(?, ?)",
                 stmt -> {
-                    stmt.setDate(1, date);
-                    stmt.setInt(2, studentId);
-                    stmt.setDate(3, date);
+                    stmt.setInt(1, studentId);
+                    stmt.setDate(2, date);
                 },
                 resultSet -> {
                     CourseTable.CourseTableEntry entry = new CourseTable.CourseTableEntry();
                     entry.courseFullName = resultSet.getString(2);
-                    Instructor instructor = new Instructor();
-                    instructor.id = resultSet.getInt(3);
-                    instructor.fullName = resultSet.getString(4);
-                    entry.instructor = instructor;
+                    entry.instructor.id = resultSet.getInt(3);
+                    entry.instructor.fullName = resultSet.getString(4);
                     entry.classBegin = resultSet.getShort(5);
                     entry.classEnd = resultSet.getShort(6);
                     entry.location = resultSet.getString(7);
-                    DayOfWeek time = DayOfWeek.valueOf(resultSet.getString(1));
-                    if (courseTable.table.containsKey(time)) {
-                        courseTable.table.get(time).add(entry);
-                    } else {
-                        courseTable.table.put(time, new HashSet<>());
-                    }
+                    courseTable.table.get(DayOfWeek.valueOf(resultSet.getString(1))).add(entry);
                 });
         return courseTable;
     }
