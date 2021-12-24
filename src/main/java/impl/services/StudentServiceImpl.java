@@ -313,20 +313,23 @@ public class StudentServiceImpl implements StudentService {
     public CourseTable getCourseTable(int studentId, Date date) {
         CourseTable courseTable = new CourseTable();
         courseTable.table = new HashMap<>();
-        safeSelect("select get_course_table(?, ?)",
+        safeSelect("select * from get_course_table(?, ?)",
                 stmt -> {
                     stmt.setInt(1, studentId);
                     stmt.setDate(2, date);
                 },
                 resultSet -> {
                     CourseTable.CourseTableEntry entry = new CourseTable.CourseTableEntry();
+                    entry.instructor = new Instructor();
                     entry.courseFullName = resultSet.getString(2);
                     entry.instructor.id = resultSet.getInt(3);
                     entry.instructor.fullName = resultSet.getString(4);
                     entry.classBegin = resultSet.getShort(5);
                     entry.classEnd = resultSet.getShort(6);
                     entry.location = resultSet.getString(7);
-                    courseTable.table.get(DayOfWeek.valueOf(resultSet.getString(1))).add(entry);
+                    DayOfWeek day = DayOfWeek.valueOf(resultSet.getString(1));
+                    if (!courseTable.table.containsKey(day)) courseTable.table.put(day, new HashSet<>());
+                    courseTable.table.get(day).add(entry);
                 });
         return courseTable;
     }
