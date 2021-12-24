@@ -27,7 +27,7 @@ public class SemesterServiceImpl implements SemesterService {
 
     @Override
     public void removeSemester(int semesterId) {
-        update(
+        delete(
                 "DELETE FROM semester WHERE id = ?",
                 stmt -> stmt.setInt(1, semesterId)
         );

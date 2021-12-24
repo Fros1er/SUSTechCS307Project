@@ -17,7 +17,7 @@ import static impl.utils.Util.*;
 
 public class UserServiceImpl implements UserService {
 
-    private static Set<Integer> userSet = ConcurrentHashMap.newKeySet();
+    private static final Set<Integer> userSet = ConcurrentHashMap.newKeySet();
     private static final ReentrantReadWriteLock userSetLock = new ReentrantReadWriteLock(true);
 
     static {
@@ -37,6 +37,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void removeUser(int userId) {
+        if (!userSet.contains(userId)) return;
         Map<String, CheckedConsumer<PreparedStatement>> queries = new LinkedHashMap<>();
         commitAllInsertion("user");
         queries.put("ALTER TABLE student DISABLE TRIGGER delete_user_by_student", stmt -> {
@@ -53,6 +54,10 @@ public class UserServiceImpl implements UserService {
         });
         try {
             updateAll(queries);
+            ReentrantReadWriteLock.WriteLock l = userSetLock.writeLock();
+            l.lock();
+            userSet.remove(userId);
+            l.unlock();
         } catch (SQLException e) {
             e.printStackTrace();
         }

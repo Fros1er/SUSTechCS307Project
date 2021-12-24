@@ -10,12 +10,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class BatchedStatement {
-    //FIXME: WHAT THE HELL ARE THOSE LOCKS
-    public static int COUNTDOWN_TIME = 25;
+    public static int COUNTDOWN_TIME = 50;
     public static int BATCH_SIZE = 114514;
 
     private final AtomicInteger countdown = new AtomicInteger();
-    private final AtomicInteger count = new AtomicInteger(0);
+    private int count = 0;
 
     private final Connection conn;
     private PreparedStatement stmt;
@@ -34,13 +33,12 @@ public class BatchedStatement {
         countdown.set(COUNTDOWN_TIME);
         conn = SQLDataSource.getInstance().getSQLConnection();
         conn.setAutoCommit(false);
-        if (Objects.equals(name, "student")) {
-            conn.prepareStatement("ALTER TABLE student DISABLE TRIGGER ALL ").execute();
-        }
         stmt = conn.prepareStatement(sql);
         thread = new Thread(() -> {
-            while (!submitting.get() && countdown.getAndDecrement() > 0) {
+            while (true) {
                 try {
+                    if (!submitting.get()) countdown.decrementAndGet();
+                    if (countdown.get() <= 0) break;
                     Thread.sleep(1);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -50,9 +48,6 @@ public class BatchedStatement {
                 try {
                     closed.set(true);
                     stmt.executeBatch();
-                    if (Objects.equals(name, "student")) {
-                        conn.prepareStatement("ALTER TABLE student ENABLE TRIGGER ALL ").execute();
-                    }
                     conn.commit();
                     conn.close();
                     finished.set(true);
@@ -70,11 +65,11 @@ public class BatchedStatement {
             if (closed.get()) return false;
             consumer.accept(stmt);
             stmt.addBatch();
-            if (count.incrementAndGet() >= BATCH_SIZE) {
+            if (++count >= BATCH_SIZE) {
                 submitting.set(true);
                 stmt.executeBatch();
                 stmt = conn.prepareStatement(sql);
-                count.set(0);
+                count = 0;
                 submitting.set(false);
             }
             countdown.set(COUNTDOWN_TIME);

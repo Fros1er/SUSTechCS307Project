@@ -1,6 +1,5 @@
 package impl.services;
 
-import cn.edu.sustech.cs307.database.SQLDataSource;
 import cn.edu.sustech.cs307.dto.*;
 import cn.edu.sustech.cs307.dto.grade.Grade;
 import cn.edu.sustech.cs307.dto.grade.HundredMarkGrade;
@@ -192,6 +191,8 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public EnrollResult enrollCourse(int studentId, int sectionId) {
+        commitAllInsertion("user");
+        commitAllInsertion("student_course");
         final EnrollResult[] res = new EnrollResult[1];
         try {
             select("select enroll_course(?, ?)",
@@ -199,9 +200,7 @@ public class StudentServiceImpl implements StudentService {
                         stmt.setInt(1, studentId);
                         stmt.setInt(2, sectionId);
                     },
-                    resultSet -> {
-                        res[0] = EnrollResult.valueOf(resultSet.getString(1));
-                    }
+                    resultSet -> res[0] = EnrollResult.valueOf(resultSet.getString(1))
             );
         } catch (SQLException e) {
             e.printStackTrace();
@@ -214,7 +213,7 @@ public class StudentServiceImpl implements StudentService {
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
         commitAllInsertion("student_course");
-        if (update("delete from student_course where student_id = ? and section_id = ? and grade is null",
+        if (delete("delete from student_course where student_id = ? and section_id = ? and grade is null",
                 stmt -> {
                     stmt.setInt(1, studentId);
                     stmt.setInt(2, sectionId);
