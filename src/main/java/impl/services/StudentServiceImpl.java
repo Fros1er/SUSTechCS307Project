@@ -1,6 +1,5 @@
 package impl.services;
 
-import cn.edu.sustech.cs307.database.SQLDataSource;
 import cn.edu.sustech.cs307.dto.*;
 import cn.edu.sustech.cs307.dto.grade.Grade;
 import cn.edu.sustech.cs307.dto.grade.HundredMarkGrade;
@@ -10,15 +9,14 @@ import cn.edu.sustech.cs307.service.StudentService;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.sql.Connection;
 import java.sql.Date;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static impl.services.UserServiceImpl.getFullName;
+import static impl.services.MajorServiceImpl.hasMajor;
+import static impl.services.UserServiceImpl.*;
 import static impl.utils.Util.*;
 
 @ParametersAreNonnullByDefault
@@ -26,6 +24,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public void addStudent(int userId, int majorId, String firstName, String lastName, Date enrolledDate) {
+        if (!hasMajor(majorId) || hasUser(userId)) throw new IntegrityViolationException();
         updateBatch("student", "SELECT insert_student(?, ?, ?, ?)",
                 stmt -> {
                     stmt.setInt(1, userId);
@@ -33,6 +32,7 @@ public class StudentServiceImpl implements StudentService {
                     stmt.setInt(3, majorId);
                     stmt.setDate(4, enrolledDate);
                 });
+        addUser(userId);
     }
 
     @Override
@@ -216,14 +216,29 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public EnrollResult enrollCourse(int studentId, int sectionId) {
-        throw new UnsupportedOperationException();
+        commitAllInsertion("user");
+        commitAllInsertion("student_course");
+        final EnrollResult[] res = new EnrollResult[1];
+        try {
+            select("select enroll_course(?, ?)",
+                    stmt -> {
+                        stmt.setInt(1, studentId);
+                        stmt.setInt(2, sectionId);
+                    },
+                    resultSet -> res[0] = EnrollResult.valueOf(resultSet.getString(1))
+            );
+        } catch (SQLException e) {
+            e.printStackTrace();
+            res[0] = EnrollResult.UNKNOWN_ERROR;
+        }
+        return res[0];
     }
 
     @Override
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
         commitAllInsertion("student_course");
-        if (update("delete from student_course where student_id = ? and section_id = ? and grade is null",
+        if (delete("delete from student_course where student_id = ? and section_id = ? and grade is null",
                 stmt -> {
                     stmt.setInt(1, studentId);
                     stmt.setInt(2, sectionId);
@@ -322,37 +337,23 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public CourseTable getCourseTable(int studentId, Date date) {
         CourseTable courseTable = new CourseTable();
-        courseTable.table = new HashMap<>();
-        safeSelect("select day_of_week,section_name,instructor_id,full_name,class_start,class_end,location from class join (\n" +
-                        "select * from student_course join (\n" +
-                        "select section_name,section.id,begin from section join (\n" +
-                        "select id,begin from semester where ? between begin and \"end\") t1\n" +
-                        "on t1.id = section.semester_id) t2\n" +
-                        "on section_id = id and student_id = ?) t3\n" +
-                        "on class.section_id = t3.section_id and findWeek(begin,?) = ANY (week_list)\n" +
-                        "join \"user\" on instructor_id = \"user\".id\n" +
-                        "order by day_of_week;",
+        courseTable.table = new LinkedHashMap<>();
+        for (DayOfWeek day : DayOfWeek.values()) courseTable.table.put(day, new HashSet<>());
+        safeSelect("select * from get_course_table(?, ?)",
                 stmt -> {
-                    stmt.setDate(1, date);
-                    stmt.setInt(2, studentId);
-                    stmt.setDate(3, date);
+                    stmt.setInt(1, studentId);
+                    stmt.setDate(2, date);
                 },
                 resultSet -> {
                     CourseTable.CourseTableEntry entry = new CourseTable.CourseTableEntry();
+                    entry.instructor = new Instructor();
                     entry.courseFullName = resultSet.getString(2);
-                    Instructor instructor = new Instructor();
-                    instructor.id = resultSet.getInt(3);
-                    instructor.fullName = resultSet.getString(4);
-                    entry.instructor = instructor;
+                    entry.instructor.id = resultSet.getInt(3);
+                    entry.instructor.fullName = resultSet.getString(4);
                     entry.classBegin = resultSet.getShort(5);
                     entry.classEnd = resultSet.getShort(6);
                     entry.location = resultSet.getString(7);
-                    DayOfWeek time = DayOfWeek.valueOf(resultSet.getString(1));
-                    if (courseTable.table.containsKey(time)) {
-                        courseTable.table.get(time).add(entry);
-                    } else {
-                        courseTable.table.put(time, new HashSet<>());
-                    }
+                    courseTable.table.get(DayOfWeek.valueOf(resultSet.getString(1))).add(entry);
                 });
         return courseTable;
     }

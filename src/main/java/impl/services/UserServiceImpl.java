@@ -10,10 +10,22 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static impl.utils.Util.*;
 
 public class UserServiceImpl implements UserService {
+
+    private static final Set<Integer> userSet = ConcurrentHashMap.newKeySet();
+    private static final ReentrantReadWriteLock userSetLock = new ReentrantReadWriteLock(true);
+
+    static {
+        ReentrantReadWriteLock.WriteLock l = userSetLock.writeLock();
+        l.lock();
+        safeSelect("SELECT id FROM \"user\"", stmt -> {}, resultSet -> userSet.add(resultSet.getInt(1)));
+        l.unlock();
+    }
 
     public static String getFullName(String firstName, String lastName) {
         StringBuilder fullName = new StringBuilder(firstName);
@@ -25,6 +37,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void removeUser(int userId) {
+        if (!userSet.contains(userId)) return;
         Map<String, CheckedConsumer<PreparedStatement>> queries = new LinkedHashMap<>();
         commitAllInsertion("user");
         queries.put("ALTER TABLE student DISABLE TRIGGER delete_user_by_student", stmt -> {
@@ -41,6 +54,10 @@ public class UserServiceImpl implements UserService {
         });
         try {
             updateAll(queries);
+            ReentrantReadWriteLock.WriteLock l = userSetLock.writeLock();
+            l.lock();
+            userSet.remove(userId);
+            l.unlock();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -74,6 +91,22 @@ public class UserServiceImpl implements UserService {
                     res.id = resultSet.getInt(1);
                     res.fullName = resultSet.getString(2);
                 });
+        return res;
+    }
+
+    public static boolean addUser(int id) {
+        ReentrantReadWriteLock.WriteLock l = userSetLock.writeLock();
+        l.lock();
+        boolean res = userSet.add(id);
+        l.unlock();
+        return res;
+    }
+
+    public static boolean hasUser(int id) {
+        ReentrantReadWriteLock.ReadLock l = userSetLock.readLock();
+        l.lock();
+        boolean res = userSet.contains(id);
+        l.unlock();
         return res;
     }
 }

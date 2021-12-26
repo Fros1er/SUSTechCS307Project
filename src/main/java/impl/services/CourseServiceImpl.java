@@ -138,17 +138,17 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public void removeCourse(String courseId) {
-        update("DELETE FROM course WHERE id = ?", stmt -> stmt.setString(1, courseId));
+        delete("DELETE FROM course WHERE \"id\" = ?", stmt -> stmt.setString(1, courseId));
     }
 
     @Override
     public void removeCourseSection(int sectionId) {
-        update("DELETE FROM section WHERE id = ?", stmt -> stmt.setInt(1, sectionId));
+        delete("DELETE FROM section WHERE id = ?", stmt -> stmt.setInt(1, sectionId));
     }
 
     @Override
     public void removeCourseSectionClass(int classId) {
-        update("DELETE FROM class WHERE id = ?", stmt -> stmt.setInt(1, classId));
+        delete("DELETE FROM class WHERE id = ?", stmt -> stmt.setInt(1, classId));
     }
 
     @Override
