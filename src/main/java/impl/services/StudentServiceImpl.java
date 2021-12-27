@@ -129,22 +129,34 @@ public class StudentServiceImpl implements StudentService {
         if (ignorePassed) {//course
             sql5 = " left join (select * from student_course where grade < 60) sc on t.id != sc.section_id and student_id = student.user_id";
         }
-        HashMap<String, String[]> enrolledCourse = new HashMap<>();
-        for (DayOfWeek d : DayOfWeek.values()) {
-            enrolledCourse.put(d.name(), new String[10]);
-        }
-        safeSelect("select day_of_week,section_name,course_name,class_start from student_course\n" +
+        LinkedHashMap<Integer, node> enrolledCourse = new LinkedHashMap<>();
+        int[] count = {0};
+        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list from student_course\n" +
                         "    join class on class.section_id = student_course.section_id and student_id = ?\n" +
-                        "    join section on class.section_id = section.id\n" +
-                        "    join course on section.course_id = course.id order by course_name;",
-                stmt -> stmt.setInt(1, studentId),
+                        "    join section on class.section_id = section.id and semester_id = ?\n" +
+                        "    join course on section.course_id = course.id order by course_name || '[' || section_name || ']';",
+                stmt -> {
+                    stmt.setInt(1, studentId);
+                    stmt.setInt(2,semesterId);
+//                    System.out.println(stmt);
+                    },
                 resultSet -> {
-                    String weekday = resultSet.getString(1);
-                    enrolledCourse.get(weekday)[resultSet.getInt(4)] = String.format("%s[%s]", resultSet.getString(3), resultSet.getString(2));
+                    count[0]++;
+                    CourseSectionClass sectionClass = new CourseSectionClass();
+                    sectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(1));
+                    sectionClass.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(6).getArray()));
+                    sectionClass.classBegin = resultSet.getShort(4);
+                    sectionClass.classEnd = resultSet.getShort(5);
+                    node node = new node();
+                    node.index = count[0];
+                    node.name = String.format("%s[%s]",resultSet.getString(3),resultSet.getString(2));
+                    node.sectionClass = sectionClass;
+                    enrolledCourse.put(count[0],node);
                 });
         StringBuilder sql0 = new StringBuilder();
         sql0.append(sql7).append(sql1_1).append(sql1_2).append(sql2).append(sql3).append(sql4).append(sql5).append(sql6).append(sort);
         LinkedHashMap<Integer,CourseSearchEntry> buffer = new LinkedHashMap<>();
+        HashMap<Integer,ArrayList<node>> nodes = new HashMap<>();
         boolean finalUseType = useType;
         safeSelect(sql0.toString(),
                     stmt->{
@@ -162,7 +174,7 @@ public class StudentServiceImpl implements StudentService {
                             stmt.setInt(3, pageSize);
                             stmt.setInt(4, pageSize * pageIndex);
                         }
-                        System.out.println(stmt);
+//                        System.out.println(stmt);
                     },
                     resultSet -> {
                         CourseSearchEntry entry = new CourseSearchEntry();
@@ -198,20 +210,47 @@ public class StudentServiceImpl implements StudentService {
                         }
                         boolean sw = true;
                         if (ignoreConflict) {
-                            if (enrolledCourse.get(sectionClass.dayOfWeek.name())[sectionClass.classBegin] != null) {
-                                sw = false;
+                            for (int i = 1; i <= enrolledCourse.size(); i++){
+                                CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
+                                if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && sectionClass.classBegin >= tem.classBegin && sectionClass.classEnd <= tem.classEnd){
+                                    sw = false;
+                                }
                             }
                         }
                         if (sw){
                             buffer.get(section.id).sectionClasses.add(sectionClass);
-                            if (!ignoreConflict && enrolledCourse.get(sectionClass.dayOfWeek.name())[sectionClass.classBegin] != null){
-                                buffer.get(section.id).conflictCourseNames.add(enrolledCourse.get(sectionClass.dayOfWeek.name())[sectionClass.classBegin]);
+                            if (!ignoreConflict){
+                                for (int i = 1; i <= enrolledCourse.size(); i++){
+                                    CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
+                                    if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && sectionClass.classBegin >= tem.classBegin && sectionClass.classEnd <= tem.classEnd){
+                                        if (!nodes.containsKey(section.id)){
+                                            nodes.put(section.id,new ArrayList<>());
+                                        }
+                                        nodes.get(section.id).add(enrolledCourse.get(i));
+                                    }
+                                }
                             }
                         }
-                        buffer.get(section.id).sectionClasses.add(sectionClass);
                     }
                 );
+        for (CourseSearchEntry entry: buffer.values()){
+            ArrayList<node> tem = nodes.get(entry.section.id);
+            if (tem != null) {
+                tem.sort(Comparator.comparingInt(o -> o.index));
+                for (node node : tem) {
+                    if (!entry.conflictCourseNames.contains(node.name)) {
+                        entry.conflictCourseNames.add(node.name);
+                    }
+                }
+            }
+        }
         return Arrays.asList(buffer.values().toArray(new CourseSearchEntry[0]));
+    }
+
+    static class node{
+        int index;
+        CourseSectionClass sectionClass;
+        String name;
     }
 
     @Override
@@ -238,13 +277,14 @@ public class StudentServiceImpl implements StudentService {
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
         commitAllInsertion("student_course");
-        if (delete("delete from student_course where student_id = ? and section_id = ? and grade is null",
-                stmt -> {
-                    stmt.setInt(1, studentId);
-                    stmt.setInt(2, sectionId);
-                }) == 0) {
-            throw new IllegalStateException();
-        }
+        delete("truncate table student_course", resultSet -> {});
+//        if (delete("delete from student_course where student_id = ? and section_id = ? and grade is null",
+//                stmt -> {
+//                    stmt.setInt(1, studentId);
+//                    stmt.setInt(2, sectionId);
+//                }) == 0) {
+//            throw new IllegalStateException();
+//        }
     }
 
     @Override
