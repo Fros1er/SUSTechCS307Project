@@ -131,7 +131,7 @@ public class StudentServiceImpl implements StudentService {
         }
         LinkedHashMap<Integer, node> enrolledCourse = new LinkedHashMap<>();
         int[] count = {0};
-        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list from student_course\n" +
+        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list,course.id from student_course\n" +
                         "    join class on class.section_id = student_course.section_id and student_id = ?\n" +
                         "    join section on class.section_id = section.id and semester_id = ?\n" +
                         "    join course on section.course_id = course.id order by course_name || '[' || section_name || ']';",
@@ -149,6 +149,7 @@ public class StudentServiceImpl implements StudentService {
                     sectionClass.classEnd = resultSet.getShort(5);
                     node node = new node();
                     node.index = count[0];
+                    node.courseId = resultSet.getString(7);
                     node.name = String.format("%s[%s]",resultSet.getString(3),resultSet.getString(2));
                     node.sectionClass = sectionClass;
                     enrolledCourse.put(count[0],node);
@@ -222,10 +223,13 @@ public class StudentServiceImpl implements StudentService {
                             if (!ignoreConflict){
                                 for (int i = 1; i <= enrolledCourse.size(); i++){
                                     CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
+                                    if (!nodes.containsKey(section.id)){
+                                        nodes.put(section.id,new ArrayList<>());
+                                    }
                                     if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && sectionClass.classBegin >= tem.classBegin && sectionClass.classEnd <= tem.classEnd){
-                                        if (!nodes.containsKey(section.id)){
-                                            nodes.put(section.id,new ArrayList<>());
-                                        }
+                                        nodes.get(section.id).add(enrolledCourse.get(i));
+                                    }
+                                    if (course.id.equals(enrolledCourse.get(i).courseId)){
                                         nodes.get(section.id).add(enrolledCourse.get(i));
                                     }
                                 }
@@ -249,6 +253,7 @@ public class StudentServiceImpl implements StudentService {
 
     static class node{
         int index;
+        String courseId;
         CourseSectionClass sectionClass;
         String name;
     }
