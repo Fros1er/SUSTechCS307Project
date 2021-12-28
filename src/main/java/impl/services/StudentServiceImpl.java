@@ -66,7 +66,7 @@ public class StudentServiceImpl implements StudentService {
         StringBuilder sql3 = new StringBuilder();
         String sql4 = "";
         String sql5 = "";
-        StringBuilder sql6 = new StringBuilder(" order by t.course_id, course_name || '[' || section_name || ']' limit ? offset ?) t2 on t2.sid = class.section_id ");
+        StringBuilder sql6 = new StringBuilder(" order by t.course_id, course_name || '[' || section_name || ']') t2 on t2.sid = class.section_id ");
         String sort = " order by Cid, course_name || '[' || section_name || ']';";
         //先找出section
         if (searchCid != null) {//course
@@ -127,14 +127,14 @@ public class StudentServiceImpl implements StudentService {
             sql2.append(" join (select course.id as coid from course left join prerequisite_group pg on pg.target_course_id = course.id where pg.id is null or is_prerequisite_satisfied(").append(studentId).append(", course.id) = true) t3 on t3.coid = t.course_id");
         }
         if (ignorePassed) {//course
-            sql5 = " left join (select * from student_course where grade < 60) sc on t.id != sc.section_id and student_id = student.user_id";
+            sql1_2.append(" and exists(select * from ignorePassed(").append(studentId).append(") where course.id = courseId) = false");
         }
         LinkedHashMap<Integer, node> enrolledCourse = new LinkedHashMap<>();
         int[] count = {0};
         safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list,course.id from student_course\n" +
                         "    join class on class.section_id = student_course.section_id and student_id = ?\n" +
                         "    join section on class.section_id = section.id and semester_id = ?\n" +
-                        "    join course on section.course_id = course.id order by course_name || '[' || section_name || ']';",
+                        "    join course on section.course_id = course.id order by course_name,section_name;",
                 stmt -> {
                     stmt.setInt(1, studentId);
                     stmt.setInt(2,semesterId);
@@ -169,13 +169,12 @@ public class StudentServiceImpl implements StudentService {
                             } else {
                                 stmt.setString(3, "Elective");
                             }
-                            stmt.setInt(4, pageSize);
-                            stmt.setInt(5, pageSize * pageIndex);
-                        } else {
-                            stmt.setInt(3, pageSize);
-                            stmt.setInt(4, pageSize * pageIndex);
+//                            stmt.setInt(4, pageSize);
+//                            stmt.setInt(5, pageSize * pageIndex);
                         }
-//                        System.out.println(stmt);
+//                            stmt.setInt(3, pageSize);
+//                            stmt.setInt(4, pageSize * pageIndex);
+                        System.out.println(stmt);
                     },
                     resultSet -> {
                         CourseSearchEntry entry = new CourseSearchEntry();
@@ -251,7 +250,24 @@ public class StudentServiceImpl implements StudentService {
                         }
                     }
                 );
+        int begin = pageSize * pageIndex; // offset
+        int end = begin + pageSize; // limit
+        int index = 0;
+        List<CourseSearchEntry> list = new ArrayList<>();
         for (CourseSearchEntry entry: buffer.values()){
+            if (entry.sectionClasses.isEmpty()){
+                buffer.remove(entry.section.id);
+            } else {
+                index++;
+                if (index > end) {
+                    break;
+                }
+                if (index > begin){
+                    list.add(entry);
+                }
+            }
+        }
+        for (CourseSearchEntry entry: list){
             ArrayList<node> tem = nodes.get(entry.section.id);
             if (tem != null) {
                 tem.sort(Comparator.comparingInt(o -> o.index));
@@ -262,7 +278,7 @@ public class StudentServiceImpl implements StudentService {
                 }
             }
         }
-        return Arrays.asList(buffer.values().toArray(new CourseSearchEntry[0]));
+        return list;
     }
 
     static class node{
