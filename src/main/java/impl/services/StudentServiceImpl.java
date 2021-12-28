@@ -213,7 +213,14 @@ public class StudentServiceImpl implements StudentService {
                         if (ignoreConflict) {
                             for (int i = 1; i <= enrolledCourse.size(); i++){
                                 CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
-                                if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && sectionClass.classBegin >= tem.classBegin && sectionClass.classEnd <= tem.classEnd){
+                                boolean conflict = false;
+                                for (int num = tem.classBegin; num <= tem.classEnd; num++){
+                                    if (num >= sectionClass.classBegin && num <= sectionClass.classEnd){
+                                        conflict = true;
+                                        break;
+                                    }
+                                }
+                                if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) &&conflict){
                                     sw = false;
                                 }
                             }
@@ -226,7 +233,14 @@ public class StudentServiceImpl implements StudentService {
                                     if (!nodes.containsKey(section.id)){
                                         nodes.put(section.id,new ArrayList<>());
                                     }
-                                    if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && sectionClass.classBegin >= tem.classBegin && sectionClass.classEnd <= tem.classEnd){
+                                    boolean conflict = false;
+                                    for (int num = tem.classBegin; num <= tem.classEnd; num++){
+                                        if (num >= sectionClass.classBegin && num <= sectionClass.classEnd){
+                                            conflict = true;
+                                            break;
+                                        }
+                                    }
+                                    if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && conflict){
                                         nodes.get(section.id).add(enrolledCourse.get(i));
                                     }
                                     if (course.id.equals(enrolledCourse.get(i).courseId)){
