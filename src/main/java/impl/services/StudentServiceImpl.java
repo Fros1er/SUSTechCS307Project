@@ -137,13 +137,12 @@ public class StudentServiceImpl implements StudentService {
         }
         LinkedHashMap<Integer, node> enrolledCourse = new LinkedHashMap<>();
         int[] count = {0};
-        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list,course.id from student_course\n" +
+        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list,course.id,semester_id from student_course\n" +
                         "    join class on class.section_id = student_course.section_id and student_id = ?\n" +
-                        "    join section on class.section_id = section.id and semester_id = ?\n" +
+                        "    join section on class.section_id = section.id" +
                         "    join course on section.course_id = course.id order by course_name,section_name;",
                 stmt -> {
                     stmt.setInt(1, studentId);
-                    stmt.setInt(2,semesterId);
 //                    System.out.println(stmt);
                     },
                 resultSet -> {
@@ -156,6 +155,7 @@ public class StudentServiceImpl implements StudentService {
                     node node = new node();
                     node.index = count[0];
                     node.courseId = resultSet.getString(7);
+                    node.semester_id = resultSet.getInt(8);
                     node.name = String.format("%s[%s]",resultSet.getString(3),resultSet.getString(2));
                     node.sectionClass = sectionClass;
                     enrolledCourse.put(count[0],node);
@@ -233,7 +233,10 @@ public class StudentServiceImpl implements StudentService {
                                         break;
                                     }
                                 }
-                                if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) &&conflict){
+                                if (course.id.equals(enrolledCourse.get(i).courseId)){
+                                    sw = false;
+                                }
+                                if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && enrolledCourse.get(i).semester_id == semesterId && sectionClass.dayOfWeek.equals(tem.dayOfWeek) &&conflict){
                                     sw = false;
                                 }
                             }
@@ -253,7 +256,7 @@ public class StudentServiceImpl implements StudentService {
                                             break;
                                         }
                                     }
-                                    if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && conflict){
+                                    if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && enrolledCourse.get(i).semester_id == semesterId && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && conflict){
                                         nodes.get(section.id).add(enrolledCourse.get(i));
                                     }
                                     if (course.id.equals(enrolledCourse.get(i).courseId)){
@@ -300,6 +303,7 @@ public class StudentServiceImpl implements StudentService {
         String courseId;
         CourseSectionClass sectionClass;
         String name;
+        int semester_id;
     }
 
     @Override
