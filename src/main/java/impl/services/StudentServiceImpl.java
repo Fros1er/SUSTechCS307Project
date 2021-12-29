@@ -126,8 +126,14 @@ public class StudentServiceImpl implements StudentService {
         if (ignoreMissingPrerequisites) {
             sql2.append(" join (select course.id as coid from course left join prerequisite_group pg on pg.target_course_id = course.id where pg.id is null or is_prerequisite_satisfied(").append(studentId).append(", course.id) = true) t3 on t3.coid = t.course_id");
         }
+        ArrayList<String> courseId = new ArrayList<>();
         if (ignorePassed) {//course
-            sql1_2.append(" and exists(select * from ignorePassed(").append(studentId).append(") where course.id = courseId) = false");
+            StringBuilder queryConflict = new StringBuilder("select * from ignorePassed(?)");
+            safeSelect(queryConflict.toString(),
+                    stmt -> stmt.setInt(1,studentId),
+                    resultSet -> {
+                        courseId.add(resultSet.getString(1));
+                    });
         }
         LinkedHashMap<Integer, node> enrolledCourse = new LinkedHashMap<>();
         int[] count = {0};
@@ -174,7 +180,7 @@ public class StudentServiceImpl implements StudentService {
                         }
 //                            stmt.setInt(3, pageSize);
 //                            stmt.setInt(4, pageSize * pageIndex);
-                        System.out.println(stmt);
+//                        System.out.println(stmt);
                     },
                     resultSet -> {
                         CourseSearchEntry entry = new CourseSearchEntry();
@@ -205,10 +211,18 @@ public class StudentServiceImpl implements StudentService {
                         sectionClass.location = resultSet.getString(8);
                         sectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(4));
                         sectionClass.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(5).getArray()));
-                        if (!buffer.containsKey(section.id)){
+                        boolean sw = true;
+                        if (ignorePassed){
+                            for (String courseid: courseId){
+                                if (courseid.equals(course.id)){
+                                    sw = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!buffer.containsKey(section.id) && sw){
                             buffer.put(section.id, entry);
                         }
-                        boolean sw = true;
                         if (ignoreConflict) {
                             for (int i = 1; i <= enrolledCourse.size(); i++){
                                 CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
