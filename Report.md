@@ -1,6 +1,6 @@
 # CS307 Database Project 2 Report
 
-### Group Member:
+## Group Member:
 
 12011525 徐延楷
 
@@ -8,41 +8,87 @@
 
 12012524 陈张杰
 
+## Database Design
 
-
-### Database Design
-
-#### Structure:
+### Structure:
 
 We designed our database as the following structure:
 
-![image-20211230104814487](E:\Sustech\Database\Project\DBProj2\SUSTechCS307Project\reportpics\image-20211230104814487.png)
+![image-20211230104814487](reportpics/1.png)
 
+### Prerequisites
 
+The prerequisite part is implemented with a truth table and a table to store the group(lines) in truth table.
 
-#### Prerequisites
+The truth table is represented as `List<List<String>>` in java, and table(id, group_id, course_id) in db.
 
+In db, the row of truth table will only contain column with value 1. So, the truth table a little special. It is
+consisted of several groups, every group contains a linear independent combination of "columns" to make the output true.
 
+So, comparing to traditional truth table, it save a lot of space, and it's easy to query in sql.
 
+#### import
 
+To convert boolean tree to truth table, we used methods below:
+
+For leaf node: create list of one group contains the node itself.
+
+For or node: merge its child groups' lists.
+
+For and node: use its child groups' lists to do cartesian product and get result.
+
+After get the table, store every groups' id and size to table prerequisite_group, and store every group to
+prerequisite_truth_table with its group number.
+
+#### query
+
+To check if a course satisfy its prerequisite is simple.
+
+The main idea is join the truth table and table student_course, and count the remaining rows of each group. If one group
+has all its rows after join, prerequisite is satisfied.
 
 ### Import Data
 
-...
+Most import is implement by simple insert statement. If the import has some additional requirement, such as import user
+need to insert into two tables, functions are used to meet requirements.
 
+Imports with large quantity and no need to return(value or throw exception) is special treated. They are packed into
+`BatchedStatement`. Instead of import every row one by one, these rows would be packed and insert together with addBatch.
 
+To do this, another thread is introduced. It serves as a timer. If a row is submitted into BatchedStatement, the counter
+would reset to 50ms. And if there are 114514 rows waiting to be submitted or the timer has run off, a batch will be
+added to sql.
 
+BatchedStatement is thread-safe, though it was implemented is a very inelegant way. Nearly all methods of 
+BatchedStatement has lock, makes them run in order. And if a method in this project use the table imported by 
+BatchedStatement, it needs to call the join() method manually to prove the consistency of data.
 
+Although the lock in BatchedStatement costs much, it is still significantly faster.
 
-### Interface Implementations
+### Cache
 
-#### Select, Add, Delete, Update:
+To be honest, the 'cache' in our project is too simple to be a cache.
 
-Most of these three basic operations can be done within single SQL statement. By using the following function we can reduce some code. We designed function update() and select() to handle single SQL statement with parameters of lambda expressions.
+At the start of program, our program will get all user_id, instructor_id with full names and major_id into memory.
+And every time these value changes, the map or set contains these data will change together. It does simplify some query
+by prevent join operations, but the idea at the beginning is for coding convenience.
+
+### Indexes
+
+All our table's primary key has indexes. Despite this, we added indexes to table class and section, to accelerate
+searchCourse.
+
+## Interface Implementations
+
+### Select, Add, Delete, Update:
+
+Most of these three basic operations can be done within single SQL statement. By using the following function we can
+reduce some code. We designed function update() and select() to handle single SQL statement with parameters of lambda
+expressions.
 
 Example Code:
 
-```java
+``` java
 public int addCourseSection(String courseId, int semesterId, String sectionName, int totalCapacity) {
     return update("INSERT INTO public.section (id, course_id, semester_id, section_name, total_capacity, left_capacity) VALUES (DEFAULT, ?, ?, ?, ?, ?)",
             (stmt) -> {
@@ -56,39 +102,61 @@ public int addCourseSection(String courseId, int semesterId, String sectionName,
 }
 ```
 
-```java
-public void removeCourse(String courseId) {
-    delete("DELETE FROM course WHERE \"id\" = ?", stmt -> stmt.setString(1, courseId));
-}
+``` java
+public void removeCourse(String courseId){
+        delete("DELETE FROM course WHERE \"id\" = ?",stmt->stmt.setString(1,courseId));
+        }
 ```
 
+### Search course:
 
+The search course method passed all test cases in local. However, it is not good, as many filter part works in java,
+make it runs pretty slow.
 
-#### Search course:
+The method contains two queries:
 
-...
+The first query is to fetch course, section and class data into java. It also filtered out all nullable conditions, 
+searchCourseType, ignoreFull and ignoreMissingPrerequisites. It's where clause is generated by checking whether the 
+parameter is null.
 
+After the first query, a map of section id to courseSearchEntry, with several supplementary collections are built.
+These collections including a set storing passed courses' id, a map to check whether there are course conflicts, 
+a 4-dimensional(week, day of week, time, CourseSearchEntries) list to check the time conflicts.
 
+The second query aims to fetch data related to student. It gets a student's enrolled courses, check whether there's a
+courseSearchEntry conflict with them, and add the conflictCourseName to the entry.
 
-#### Enroll course:
+In the end, a filter will remove every ignored courseSearchEntry in the map. As the map is converted into LinkedList
+before, this step is still efficient.
 
-To implement the enrollCourse() function, we declared a SQL function enroll_course with two parameters, student ID and section ID, as the process contains multiple searching quires.
+The first query consumed nearly 3/5 time in the method, and the second query and other part shares the remained 2/5.
 
-According to the requirement, the function should return **SUCCESS** as the enroll result or other 7 different types of enroll failure by a certain return priority. 
+### Enroll course:
 
-​	**COURSE_NOT_FOUND** failure can be determined by searching the corresponding course ID in table section.
+To implement the enrollCourse() function, we declared a SQL function enroll_course with two parameters, student ID and
+section ID, as the process contains multiple searching quires.
 
-​	**ALREADY_ENROLLED** failure can be determined by searching the section ID in student_course table.
+According to the requirement, the function should return **SUCCESS** as the enroll result or other 7 different types of
+enroll failure by a certain return priority.
 
-​	**ALREADY_PASSED** is similar. By searching the section IDs related to the course ID in student_course table, where grade is over 60.
+**COURSE_NOT_FOUND** failure can be determined by searching the corresponding course ID in table section.
 
-​	**PREREQUISITES_NOT_FULFILLED** failure can be easily solved by the previous declared function is_prerequisite_satisfied().
+**ALREADY_ENROLLED** failure can be determined by searching the section ID in student_course table.
 
-​	**COURSE_CONFLICT_FOUND** happens when there exists time conflicts or course conflicts, so the first judgement is whether the student has picked a course section having the same course ID with the target section, then the second is whether the classes of the section have time conflicts with other sections the student picked. Using `unnest` function can process the array week_list into separated numbers.
+**ALREADY_PASSED** is similar. By searching the section IDs related to the course ID in student_course table, where
+grade is over 60.
+
+**PREREQUISITES_NOT_FULFILLED** failure can be easily solved by the previous declared function
+is_prerequisite_satisfied().
+
+**COURSE_CONFLICT_FOUND** happens when there exists time conflicts or course conflicts, so the first judgement is
+whether the student has picked a course section having the same course ID with the target section, then the second is
+whether the classes of the section have time conflicts with other sections the student picked. Using `unnest` function
+can process the array week_list into separated numbers.
 
 Code:
 
-```sql
+``` sql
 create function enroll_course(integer, integer) returns character varying
     language plpgsql
 as
@@ -184,19 +252,28 @@ end;
 $$;
 ```
 
+### Get course table:
 
+We designed a SQL function with parameter of student ID and the date to implement this function.
 
-#### Get course table:
-
-We designed a SQL function with parameter of student ID and the date to implement this function. 
-
-The main problem is to calculate the target week number by the given date. Through taking the difference between the target date and the date when semester begin, the problem can be solved. Using `ceil` to round number and get the target week. Using operator @> to judge the inclusion relation.
+The main problem is to calculate the target week number by the given date. Through taking the difference between the
+target date and the date when semester begin, the problem can be solved. Using `ceil` to round number and get the target
+week. Using operator @> to judge the inclusion relation.
 
 Code:
 
-```sql
+``` sql
 create function get_course_table(integer, date)
-    returns TABLE(day_of_week weekday, course_name text, instructor_id integer, instructor_name character varying, class_begin smallint, class_end smallint, location character varying)
+    returns TABLE
+            (
+                day_of_week     weekday,
+                course_name     text,
+                instructor_id   integer,
+                instructor_name character varying,
+                class_begin     smallint,
+                class_end       smallint,
+                location        character varying
+            )
     language plpgsql
 as
 $$
@@ -231,21 +308,35 @@ BEGIN
                  join "user" u on u.id = i.user_id
                  join course c2 on s.course_id = c2.id
         where semester_id = current_semester_id
-          and week_list @> array[cast(week_num as smallint)];
+          and week_list @> array [cast(week_num as smallint)];
 end;
 $$;
 ```
 
-
-
 ### Performance
 
-#### Correctness:
+Results are listed below(The right side is SA's result):
 
+``` shell
+Import time usage: 0.80s    |   2.46s
+Test search course 1: 1000
+Test search course 1 time: 4.42s    |   0.53s
+Test enroll course 1: 1000
+Test enroll course 1 time: 1.72s    |   0.29s
+Test drop enrolled course 1: 813
+Test drop enrolled course 1 time: 0.10s     |   0.03s
+Import student courses time: 7.15s  |   14.19s
+Test drop course: 416637
+Test drop course time: 11.27s   |   4.75s
+Test course table 2: 1000
+Test course table 2 time: 0.32s     |   0.17s
+Test search course 2: 1000
+Test search course 2 time: 5.55s    |   0.48s
+Test enroll course 2: 1000
+Test enroll course 2 time: 1.06s     |   0.16s
+```
 
+Our computer's performance is a little worse than SA's computer, but it still shows that our enrollCourse, dropCourse
+and searchCourse is slow than his. However, imports used batchedStatement is faster.
 
-#### Time consumption:
-
-
-
-### Optimization Methods
+Also, we had passed all local test cases.
