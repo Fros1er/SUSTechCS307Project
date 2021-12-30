@@ -23,8 +23,6 @@ import static impl.utils.Util.*;
 
 @ParametersAreNonnullByDefault
 public class CourseServiceImpl implements CourseService {
-
-    //TODO: Section left capacity
     @Override
     public void addCourse(String courseId, String courseName, int credit, int classHour, Course.CourseGrading grading, @Nullable Prerequisite prerequisite) {
         try {
