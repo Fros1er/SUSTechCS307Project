@@ -38,12 +38,13 @@ public class SearchCourseQueryBuilder {
             all.append("and section.left_capacity > 0 ");
         if (ignoreMissingPrerequisites)
             all.append(String.format("and is_prerequisite_satisfied(%d, crs.course_id) ", studentId));
+        all.append("order by crs.course_id, crs.course_name || '[' || section.section_name || ']' ");
         return all.toString();
     }
 
     public static StringBuilder buildClassSubQuery(@Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, List<Instructor> instructors) {
         StringBuilder classSubQuery = new StringBuilder();
-        if (searchDayOfWeek != null || searchClassTime != null || searchClassLocations != null) {
+        if (searchDayOfWeek != null || searchClassTime != null || (searchClassLocations != null && !searchClassLocations.isEmpty()) || instructors != null) {
             classSubQuery.append("(select section_id from class where ");
             StringBuilder where = new StringBuilder();
             if (searchDayOfWeek != null) {
@@ -111,5 +112,9 @@ public class SearchCourseQueryBuilder {
         }
         courseSubQuery.append(") as crs ");
         return courseSubQuery;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(buildSearchCourseSQL(11718009, 3, null, null, null, null, (short)6, null, StudentService.CourseType.ALL, true, false));
     }
 }
