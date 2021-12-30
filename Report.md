@@ -1,12 +1,78 @@
 # CS307 Database Project 2 Report
 
+### Group Member:
+
+12011525 徐延楷
+
+12011528 张艺严
+
+12012524 陈张杰
+
+
+
+### Database Design
+
+#### Structure:
+
+We designed our database as the following structure:
+
+![image-20211230104814487](E:\Sustech\Database\Project\DBProj2\SUSTechCS307Project\reportpics\image-20211230104814487.png)
+
+
+
+#### Prerequisites
 
 
 
 
-#### enroll course:
 
-To implement the enrollCourse() function, we declared a SQL function enroll_course with two parameters, student ID and section ID, as the process contains multiple searching quires. 
+### Import Data
+
+...
+
+
+
+
+
+### Interface Implementations
+
+#### Select, Add, Delete, Update:
+
+Most of these three basic operations can be done within single SQL statement. By using the following function we can reduce some code. We designed function update() and select() to handle single SQL statement with parameters of lambda expressions.
+
+Example Code:
+
+```java
+public int addCourseSection(String courseId, int semesterId, String sectionName, int totalCapacity) {
+    return update("INSERT INTO public.section (id, course_id, semester_id, section_name, total_capacity, left_capacity) VALUES (DEFAULT, ?, ?, ?, ?, ?)",
+            (stmt) -> {
+                stmt.setString(1, courseId);
+                stmt.setInt(2, semesterId);
+                stmt.setString(3, sectionName);
+                stmt.setInt(4, totalCapacity);
+                stmt.setInt(5, totalCapacity);
+            }
+    );
+}
+```
+
+```java
+public void removeCourse(String courseId) {
+    delete("DELETE FROM course WHERE \"id\" = ?", stmt -> stmt.setString(1, courseId));
+}
+```
+
+
+
+#### Search course:
+
+...
+
+
+
+#### Enroll course:
+
+To implement the enrollCourse() function, we declared a SQL function enroll_course with two parameters, student ID and section ID, as the process contains multiple searching quires.
 
 According to the requirement, the function should return **SUCCESS** as the enroll result or other 7 different types of enroll failure by a certain return priority. 
 
@@ -120,11 +186,11 @@ $$;
 
 
 
-#### get course table:
+#### Get course table:
 
 We designed a SQL function with parameter of student ID and the date to implement this function. 
 
-The main problem is to find the target week number by the given date. Through taking the difference between the target date and the date when semester begin, the problem can be solved. Using `ceil` to get the target week.
+The main problem is to find the target week number by the given date. Through taking the difference between the target date and the date when semester begin, the problem can be solved. Using `ceil` to round number and get the target week.
 
 Code:
 
@@ -180,3 +246,10 @@ end;
 $$;
 ```
 
+
+
+### Performance
+
+
+
+### Optimization Methods
