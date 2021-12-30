@@ -190,7 +190,7 @@ $$;
 
 We designed a SQL function with parameter of student ID and the date to implement this function. 
 
-The main problem is to find the target week number by the given date. Through taking the difference between the target date and the date when semester begin, the problem can be solved. Using `ceil` to round number and get the target week.
+The main problem is to calculate the target week number by the given date. Through taking the difference between the target date and the date when semester begin, the problem can be solved. Using `ceil` to round number and get the target week. Using operator @> to judge the inclusion relation.
 
 Code:
 
@@ -216,32 +216,22 @@ BEGIN
     return query
         with temp_sections as (select section_id
                                from student_course
-                               where student_id = $1),
-             temp_week as (select unnest(week_list)                              as week,
-                                  c.day_of_week                                  as day,
-                                  c2.course_name || '[' || s.section_name || ']' as class_name,
-                                  c.instructor_id                                as instructor_id,
-                                  u.full_name                                    as instructor_full_name,
-                                  c.class_start                                  as class_begin,
-                                  c.class_end                                    as class_end,
-                                  c.location                                     as location
-                           from temp_sections
-                                    join section s on section_id = s.id
-                                    join class c on s.id = c.section_id
-                                    join instructor i on i.user_id = c.instructor_id
-                                    join "user" u on u.id = i.user_id
-                                    join course c2 on s.course_id = c2.id
-                           where semester_id = current_semester_id
-             )
-        select temp_week.day,
-               temp_week.class_name,
-               temp_week.instructor_id,
-               temp_week.instructor_full_name,
-               temp_week.class_begin,
-               temp_week.class_end,
-               temp_week.location
-        from temp_week
-        where week = week_num;
+                               where student_id = $1)
+        select c.day_of_week                                  as day,
+               c2.course_name || '[' || s.section_name || ']' as class_name,
+               c.instructor_id                                as instructor_id,
+               u.full_name                                    as instructor_full_name,
+               c.class_start                                  as class_begin,
+               c.class_end                                    as class_end,
+               c.location                                     as location
+        from temp_sections
+                 join section s on section_id = s.id
+                 join class c on s.id = c.section_id
+                 join instructor i on i.user_id = c.instructor_id
+                 join "user" u on u.id = i.user_id
+                 join course c2 on s.course_id = c2.id
+        where semester_id = current_semester_id
+          and week_list @> array[cast(week_num as smallint)];
 end;
 $$;
 ```
@@ -249,6 +239,12 @@ $$;
 
 
 ### Performance
+
+#### Correctness:
+
+
+
+#### Time consumption:
 
 
 
