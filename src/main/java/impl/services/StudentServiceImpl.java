@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static impl.services.MajorServiceImpl.hasMajor;
 import static impl.services.UserServiceImpl.*;
@@ -59,7 +60,7 @@ public class StudentServiceImpl implements StudentService {
                 "       grading from class\n" +
                 "           join \"user\" on class.instructor_id = \"user\".id\n" +
                 "           join (";
-        StringBuilder sql1_1 = new StringBuilder("select *,t.id as sid,t.course_id as Cid");
+        String sql1_1 = "select *,t.id as sid,t.course_id as Cid";
         StringBuilder sql1_2 = new StringBuilder(" from (select * from section where exists(select * from class where section_id = section.id)) t\n" +
                 "         join course on t.course_id = course.id and semester_id = ?");
         StringBuilder sql2 = new StringBuilder(" join student on student.user_id = ?");
@@ -75,17 +76,17 @@ public class StudentServiceImpl implements StudentService {
         if (searchName != null) {//course
             sql1_2.append(" and course_name || '[' || t.section_name || ']' like '%").append(searchName).append("%'");
         }
-        if (searchInstructor == null && (searchDayOfWeek != null || searchClassTime != null || searchClassLocations != null)){
+        if (searchInstructor == null && (searchDayOfWeek != null || searchClassTime != null || searchClassLocations != null)) {
             sql2.append(" and exists(select * from class where section_id = t.id");
         }
         if (searchInstructor != null) {//class
-            sql2.append(" and exists(select * from class join \"user\" on instructor_id = \"user\".id and section_id = t.id where replace(full_name,' ','') like '%").append(searchInstructor.replace(" ","")).append("%'");
+            sql2.append(" and exists(select * from class join \"user\" on instructor_id = \"user\".id and section_id = t.id where replace(full_name,' ','') like '%").append(searchInstructor.replace(" ", "")).append("%'");
         }
         if (searchDayOfWeek != null) {//class
             sql2.append(" and day_of_week = '").append(searchDayOfWeek.name()).append("'");
         }
         if (searchClassTime != null) {//class
-            sql2.append(" and ").append(searchClassTime).append(" between class_start and class_end and section_id = t.id");
+            sql6.append(" and class_start <= ").append(searchClassTime).append(" and class_end >= ").append(searchClassTime);
         }
         if (searchClassLocations != null && !searchClassLocations.isEmpty()) {
             sql2.append(" and location like any (array[");//class
@@ -97,7 +98,7 @@ public class StudentServiceImpl implements StudentService {
                 }
             }
         }
-        if (searchDayOfWeek != null || searchClassTime != null || searchClassLocations != null || searchInstructor != null){
+        if (searchDayOfWeek != null || searchClassTime != null || searchClassLocations != null || searchInstructor != null) {
             sql2.append(")");
         }
         boolean useType = false;
@@ -123,168 +124,177 @@ public class StudentServiceImpl implements StudentService {
         if (ignoreFull) {
             sql1_2.append(" and left_capacity > 0");
         }
-        if (ignoreMissingPrerequisites) {
-            sql2.append(" join (select course.id as coid from course left join prerequisite_group pg on pg.target_course_id = course.id where pg.id is null or is_prerequisite_satisfied(").append(studentId).append(", course.id) = true) t3 on t3.coid = t.course_id");
-        }
         ArrayList<String> courseId = new ArrayList<>();
         if (ignorePassed) {//course
             StringBuilder queryConflict = new StringBuilder("select * from ignorePassed(?)");
             safeSelect(queryConflict.toString(),
-                    stmt -> stmt.setInt(1,studentId),
+                    stmt -> stmt.setInt(1, studentId),
                     resultSet -> {
                         courseId.add(resultSet.getString(1));
                     });
         }
         LinkedHashMap<Integer, node> enrolledCourse = new LinkedHashMap<>();
         int[] count = {0};
-        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list,course.id,semester_id from student_course\n" +
-                        "    join class on class.section_id = student_course.section_id and student_id = ?\n" +
-                        "    join section on class.section_id = section.id" +
-                        "    join course on section.course_id = course.id order by course_name,section_name;",
+        safeSelect("select day_of_week,section_name,course_name,class_start,class_end,week_list,course.id from student_course\n" +
+                        "  join section on student_course.section_id = section.id and student_id = ? and semester_id = ?\n" +
+                        "  join course on section.course_id = course.id\n" +
+                        "  left join class on class.section_id = student_course.section_id order by course_name,section_name;",
                 stmt -> {
                     stmt.setInt(1, studentId);
+                    stmt.setInt(2, semesterId);
 //                    System.out.println(stmt);
-                    },
+                },
                 resultSet -> {
                     count[0]++;
                     CourseSectionClass sectionClass = new CourseSectionClass();
-                    sectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(1));
-                    sectionClass.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(6).getArray()));
-                    sectionClass.classBegin = resultSet.getShort(4);
-                    sectionClass.classEnd = resultSet.getShort(5);
+                    if (resultSet.getString(1) != null) {
+                        sectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(1));
+                    }
+                    if (resultSet.getArray(6) != null) {
+                        sectionClass.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(6).getArray()));
+                    } else {
+                        sectionClass.weekList = new HashSet<>();
+                        sectionClass.weekList.add((short) -1);
+                    }
+                    if (resultSet.getInt(4) != 0) {
+                        sectionClass.classBegin = resultSet.getShort(4);
+                        sectionClass.classEnd = resultSet.getShort(5);
+                    } else {
+                        sectionClass.classBegin = -1;
+                        sectionClass.classEnd = -1;
+                    }
                     node node = new node();
                     node.index = count[0];
                     node.courseId = resultSet.getString(7);
-                    node.semester_id = resultSet.getInt(8);
-                    node.name = String.format("%s[%s]",resultSet.getString(3),resultSet.getString(2));
+                    node.name = String.format("%s[%s]", resultSet.getString(3), resultSet.getString(2));
                     node.sectionClass = sectionClass;
-                    enrolledCourse.put(count[0],node);
+                    enrolledCourse.put(count[0], node);
                 });
         StringBuilder sql0 = new StringBuilder();
         sql0.append(sql7).append(sql1_1).append(sql1_2).append(sql2).append(sql3).append(sql4).append(sql5).append(sql6).append(sort);
-        LinkedHashMap<Integer,CourseSearchEntry> buffer = new LinkedHashMap<>();
-        HashMap<Integer,ArrayList<node>> nodes = new HashMap<>();
+        LinkedHashMap<Integer, CourseSearchEntry> buffer = new LinkedHashMap<>();
+        HashMap<Integer, ArrayList<node>> nodes = new HashMap<>();
         boolean finalUseType = useType;
         safeSelect(sql0.toString(),
-                    stmt->{
-                        stmt.setInt(1, semesterId);
-                        stmt.setInt(2, studentId);
-                        if (finalUseType) {
-                            if (searchCourseType == CourseType.MAJOR_COMPULSORY) {
-                                stmt.setString(3, "Compulsory");
-                            } else {
-                                stmt.setString(3, "Elective");
-                            }
+                stmt -> {
+                    stmt.setInt(1, semesterId);
+                    stmt.setInt(2, studentId);
+                    if (finalUseType) {
+                        if (searchCourseType == CourseType.MAJOR_COMPULSORY) {
+                            stmt.setString(3, "Compulsory");
+                        } else {
+                            stmt.setString(3, "Elective");
+                        }
 //                            stmt.setInt(4, pageSize);
 //                            stmt.setInt(5, pageSize * pageIndex);
-                        }
+                    }
 //                            stmt.setInt(3, pageSize);
 //                            stmt.setInt(4, pageSize * pageIndex);
-//                        System.out.println(stmt);
-                    },
-                    resultSet -> {
-                        CourseSearchEntry entry = new CourseSearchEntry();
-                        entry.sectionClasses = new HashSet<>();
-                        entry.conflictCourseNames = new ArrayList<>();
-                        Course course = new Course();
-                        CourseSection section = new CourseSection();
-                        section.id = resultSet.getInt(2);
-                        section.totalCapacity = resultSet.getInt(13);
-                        section.leftCapacity = resultSet.getInt(14);
-                        section.name = resultSet.getString(11);
-                        course.id = resultSet.getString(12);
-                        course.grading = Course.CourseGrading.valueOf(resultSet.getString(18));
-                        course.credit = resultSet.getInt(16);
-                        course.name = resultSet.getString(15);
-                        course.classHour = resultSet.getInt(17);
-                        entry.section = section;
-                        entry.course = course;
-                        //------------------------------------------------------------class
-                        CourseSectionClass sectionClass = new CourseSectionClass();
-                        Instructor instructor = new Instructor();
-                        instructor.id = resultSet.getInt(3);
-                        instructor.fullName = resultSet.getString(9);
-                        sectionClass.instructor = instructor;
-                        sectionClass.id = resultSet.getInt(1);
-                        sectionClass.classBegin = resultSet.getShort(6);
-                        sectionClass.classEnd = resultSet.getShort(7);
-                        sectionClass.location = resultSet.getString(8);
-                        sectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(4));
-                        sectionClass.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(5).getArray()));
-                        boolean sw = true;
-                        if (ignorePassed){
-                            for (String courseid: courseId){
-                                if (courseid.equals(course.id)){
-                                    sw = false;
+                        System.out.println(stmt);
+                },
+                resultSet -> {
+                    CourseSearchEntry entry = new CourseSearchEntry();
+                    entry.sectionClasses = new HashSet<>();
+                    entry.conflictCourseNames = new ArrayList<>();
+                    Course course = new Course();
+                    CourseSection section = new CourseSection();
+                    section.id = resultSet.getInt(2);
+                    section.totalCapacity = resultSet.getInt(13);
+                    section.leftCapacity = resultSet.getInt(14);
+                    section.name = resultSet.getString(11);
+                    course.id = resultSet.getString(12);
+                    course.grading = Course.CourseGrading.valueOf(resultSet.getString(18));
+                    course.credit = resultSet.getInt(16);
+                    course.name = resultSet.getString(15);
+                    course.classHour = resultSet.getInt(17);
+                    entry.section = section;
+                    entry.course = course;
+                    //------------------------------------------------------------class
+                    CourseSectionClass sectionClass = new CourseSectionClass();
+                    Instructor instructor = new Instructor();
+                    instructor.id = resultSet.getInt(3);
+                    instructor.fullName = resultSet.getString(9);
+                    sectionClass.instructor = instructor;
+                    sectionClass.id = resultSet.getInt(1);
+                    sectionClass.classBegin = resultSet.getShort(6);
+                    sectionClass.classEnd = resultSet.getShort(7);
+                    sectionClass.location = resultSet.getString(8);
+                    sectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(4));
+                    sectionClass.weekList = new HashSet<>(Arrays.asList((Short[]) resultSet.getArray(5).getArray()));
+                    boolean sw = true;
+                    if (ignoreMissingPrerequisites){
+                        if (!passedPrerequisitesForCourse(studentId,course.id)){
+                            sw = false;
+                        }
+                    }
+                    if (ignorePassed) {
+                        for (String courseid : courseId) {
+                            if (courseid.equals(course.id)) {
+                                sw = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (!buffer.containsKey(section.id) && sw) {
+                        buffer.put(section.id, entry);
+                    }
+                    if (ignoreConflict) {
+                        for (int i = 1; i <= enrolledCourse.size(); i++) {
+                            CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
+                            boolean conflict = false;
+                            for (int num = tem.classBegin; num <= tem.classEnd; num++) {
+                                if (num >= sectionClass.classBegin && num <= sectionClass.classEnd) {
+                                    conflict = true;
                                     break;
                                 }
                             }
+                            if (sectionClass.weekList.stream().anyMatch(v -> tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && conflict) {
+                                sw = false;
+                            }
                         }
-                        if (!buffer.containsKey(section.id) && sw){
-                            buffer.put(section.id, entry);
-                        }
-                        if (ignoreConflict) {
-                            for (int i = 1; i <= enrolledCourse.size(); i++){
+                    }
+                    if (sw) {
+                        buffer.get(section.id).sectionClasses.add(sectionClass);
+                        if (!ignoreConflict) {
+                            for (int i = 1; i <= enrolledCourse.size(); i++) {
                                 CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
+                                if (!nodes.containsKey(section.id)) {
+                                    nodes.put(section.id, new ArrayList<>());
+                                }
                                 boolean conflict = false;
-                                for (int num = tem.classBegin; num <= tem.classEnd; num++){
-                                    if (num >= sectionClass.classBegin && num <= sectionClass.classEnd){
+                                for (int num = tem.classBegin; num <= tem.classEnd; num++) {
+                                    if (num >= sectionClass.classBegin && num <= sectionClass.classEnd) {
                                         conflict = true;
                                         break;
                                     }
                                 }
-                                if (course.id.equals(enrolledCourse.get(i).courseId)){
-                                    sw = false;
+                                if (sectionClass.weekList.stream().anyMatch(v -> tem.weekList.contains(v)) && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && conflict) {
+                                    nodes.get(section.id).add(enrolledCourse.get(i));
                                 }
-                                if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && enrolledCourse.get(i).semester_id == semesterId && sectionClass.dayOfWeek.equals(tem.dayOfWeek) &&conflict){
-                                    sw = false;
-                                }
-                            }
-                        }
-                        if (sw){
-                            buffer.get(section.id).sectionClasses.add(sectionClass);
-                            if (!ignoreConflict){
-                                for (int i = 1; i <= enrolledCourse.size(); i++){
-                                    CourseSectionClass tem = enrolledCourse.get(i).sectionClass;
-                                    if (!nodes.containsKey(section.id)){
-                                        nodes.put(section.id,new ArrayList<>());
-                                    }
-                                    boolean conflict = false;
-                                    for (int num = tem.classBegin; num <= tem.classEnd; num++){
-                                        if (num >= sectionClass.classBegin && num <= sectionClass.classEnd){
-                                            conflict = true;
-                                            break;
-                                        }
-                                    }
-                                    if (sectionClass.weekList.stream().anyMatch(v->tem.weekList.contains(v)) && enrolledCourse.get(i).semester_id == semesterId && sectionClass.dayOfWeek.equals(tem.dayOfWeek) && conflict){
-                                        nodes.get(section.id).add(enrolledCourse.get(i));
-                                    }
-                                    if (course.id.equals(enrolledCourse.get(i).courseId)){
-                                        nodes.get(section.id).add(enrolledCourse.get(i));
-                                    }
+                                if (course.id.equals(enrolledCourse.get(i).courseId)) {
+                                    nodes.get(section.id).add(enrolledCourse.get(i));
                                 }
                             }
                         }
                     }
-                );
+                }
+        );
         int begin = pageSize * pageIndex; // offset
         int end = begin + pageSize; // limit
         int index = 0;
         List<CourseSearchEntry> list = new ArrayList<>();
-        for (CourseSearchEntry entry: buffer.values()){
-            if (entry.sectionClasses.isEmpty()){
-                buffer.remove(entry.section.id);
-            } else {
-                index++;
-                if (index > end) {
-                    break;
-                }
-                if (index > begin){
-                    list.add(entry);
-                }
+        buffer.entrySet().removeIf(entry -> entry.getValue().sectionClasses.isEmpty());
+        for (CourseSearchEntry entry : buffer.values()) {
+            index++;
+            if (index > end) {
+                break;
             }
+            if (index > begin) {
+                list.add(entry);
+            }
+
         }
-        for (CourseSearchEntry entry: list){
+        for (CourseSearchEntry entry : list) {
             ArrayList<node> tem = nodes.get(entry.section.id);
             if (tem != null) {
                 tem.sort(Comparator.comparingInt(o -> o.index));
@@ -298,12 +308,11 @@ public class StudentServiceImpl implements StudentService {
         return list;
     }
 
-    static class node{
+    static class node {
         int index;
         String courseId;
         CourseSectionClass sectionClass;
         String name;
-        int semester_id;
     }
 
     @Override
@@ -330,14 +339,13 @@ public class StudentServiceImpl implements StudentService {
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         commitAllInsertion("user");
         commitAllInsertion("student_course");
-        delete("truncate table student_course", resultSet -> {});
-//        if (delete("delete from student_course where student_id = ? and section_id = ? and grade is null",
-//                stmt -> {
-//                    stmt.setInt(1, studentId);
-//                    stmt.setInt(2, sectionId);
-//                }) == 0) {
-//            throw new IllegalStateException();
-//        }
+        int[] res = new int[1];
+        safeSelect("select drop_course(?, ?)",
+                stmt -> {
+                    stmt.setInt(1, studentId);
+                    stmt.setInt(2, sectionId);
+                }, resultSet -> res[0] = resultSet.getInt(1));
+        if (res[0] == 0) throw new IllegalStateException();
     }
 
     @Override
@@ -400,11 +408,12 @@ public class StudentServiceImpl implements StudentService {
         if (semesterId != null) {
             sql.append("semester_id = ? and ");
         }
-        sql.append("student_course.section_id = section.id) t1 on t1.course_id = course.id;");
+        sql.append("student_course.section_id = section.id and student_id = ?) t1 on t1.course_id = course.id;");
         safeSelect(sql.toString(),
                 stmt -> {
                     if (semesterId != null) {
                         stmt.setInt(1, semesterId);
+                        stmt.setInt(2, studentId);
                     }
                 },
                 resultSet -> {
