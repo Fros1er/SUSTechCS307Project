@@ -47,6 +47,9 @@ public class StudentServiceImpl implements StudentService {
                                                 boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
         commitAllInsertion("student_course");
         commitAllInsertion("user");
+
+        if (searchClassLocations != null && searchClassLocations.isEmpty()) return new ArrayList<>();
+
         Map<Integer, CourseSearchEntry> resMap = new LinkedHashMap<>();
         Map<String, List<CourseSearchEntry>> courseConflictSearcherMap = new HashMap<>();
         List<CourseSearchEntry>[][][] courseTable = new List[15][7][20];
@@ -103,16 +106,20 @@ public class StudentServiceImpl implements StudentService {
 
         Set<String> passedCourses = new LinkedHashSet<>();
 
-        safeSelect("select s.id as section_id, c.course_name || '[' || s.section_name || ']' as full_name, s.course_id, s.semester_id, class.class_start, class.class_end, class.day_of_week, class.week_list, grade is not null and student_course.grade >= 60 as passed from student_course inner join section s on s.id = student_course.section_id inner join course c on c.id = s.course_id inner join class on class.section_id = student_course.section_id where student_id = ? order by c.course_name, s.section_name", stmt -> stmt.setInt(1, studentId),
+        safeSelect("select s.id as section_id, c.course_name || '[' || s.section_name || ']' as full_name, s.course_id, s.semester_id, class.class_start, class.class_end, class.day_of_week, class.week_list, grade is not null and student_course.grade >= 60 as passed from student_course inner join section s on s.id = student_course.section_id inner join course c on c.id = s.course_id left join class on class.section_id = student_course.section_id where student_id = ? order by c.course_name, s.section_name", stmt -> stmt.setInt(1, studentId),
                 resultSet -> {
                     String course_id = resultSet.getString(3);
-                    if (resultSet.getInt(4) == semesterId) {
-                        String conflictString = resultSet.getString(2);
+                    String conflictString = resultSet.getString(2);
+                    int semester = resultSet.getInt(4);
+                    boolean passed = resultSet.getBoolean(9);
+                    if (semester == semesterId) {
                         if (courseConflictSearcherMap.containsKey(course_id))
                             courseConflictSearcherMap.get(course_id).forEach(v -> {
                                 if (!v.conflictCourseNames.contains(conflictString))
                                     v.conflictCourseNames.add(conflictString);
                             });
+                    }
+                    if (semester == semesterId && resultSet.getArray(8) != null) {
                         Short[] weekList = (Short[]) resultSet.getArray(8).getArray();
                         int dow = DayOfWeek.valueOf(resultSet.getString(7)).getValue() - 1;
                         int class_start = resultSet.getInt(5);
@@ -127,20 +134,13 @@ public class StudentServiceImpl implements StudentService {
                             }
                         }
                     }
-                    if (resultSet.getBoolean(9)) passedCourses.add(course_id);
+                    if (passed) passedCourses.add(course_id);
                 }
         );
 
         List<CourseSearchEntry> res = new LinkedList<>(resMap.values());
         if (ignoreConflict || ignorePassed)
             res.removeIf(v -> (ignoreConflict && !v.conflictCourseNames.isEmpty()) || (ignorePassed && passedCourses.contains(v.course.id)));
-//        res.sort((o1, o2) -> {
-//            int idRes = o1.course.id.compareTo(o2.course.id);
-//            return (idRes == 0) ? String.format("%s[%s]", o1.course.name, o1.section.name).compareTo(String.format("%s[%s]", o2.course.name, o2.section.name)) : idRes;
-//        });
-//        if (!ignoreConflict) {
-//            res.forEach(v -> v.conflictCourseNames.sort(Comparator.naturalOrder()));
-//        }
 
         if ((pageIndex) * pageSize >= res.size()) return new ArrayList<>();
         if ((pageIndex + 1) * pageSize > res.size()) return res.subList((pageIndex) * pageSize, res.size());

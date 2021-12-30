@@ -25,9 +25,11 @@ public class InstructorServiceImpl implements InstructorService {
     }
 
     public static List<Instructor> searchInstructor(String name) {
+        String finalName = name.replace(" ", "");
         List<Instructor> res = new LinkedList<>();
         instructorMap.forEach((k, v) -> {
-            if (v.endsWith(name) || v.startsWith(name)) {
+            String replacedName = v.replace(" ", "");
+            if (replacedName.endsWith(finalName) || replacedName.startsWith(finalName)) {
                 Instructor i = new Instructor();
                 i.id = k;
                 i.fullName = v;

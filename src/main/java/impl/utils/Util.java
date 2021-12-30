@@ -5,7 +5,7 @@ import cn.edu.sustech.cs307.exception.IntegrityViolationException;
 
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Util {
     public static List<Integer> updateAll(Map<String, CheckedConsumer<PreparedStatement>> queries) throws SQLException {
@@ -156,18 +156,5 @@ public class Util {
                 batchedStatements.get(name).clear();
             }
         }
-    }
-
-    public static void main(String[] args) {
-        updateBatch("a", "SELECT insert_instructor(?, ?)",
-                stmt -> {
-                    stmt.setInt(1, 1);
-                    stmt.setString(2, "a");
-                });
-        updateBatch("a", "SELECT insert_instructor(?, ?)",
-                stmt -> {
-                    stmt.setInt(1, 1);
-                    stmt.setString(2, "b");
-                });
     }
 }
