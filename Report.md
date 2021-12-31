@@ -27,7 +27,64 @@ consisted of several groups, every group contains a linear independent combinati
 
 So, comparing to traditional truth table, it save a lot of space, and it's easy to query in sql.
 
-#### import
+Code:
+
+```java
+List<List<String>> truthTable = prerequisite.when(new Prerequisite.Cases<>() {
+        @Override
+        public List<List<String>> match(AndPrerequisite self) {
+            List<List<String>> res = self.terms.get(0).when(this);
+            for (int i = 1; i < self.terms.size(); i++) {
+                Prerequisite term = self.terms.get(i);
+                List<List<String>> tmp = new ArrayList<>();
+                for (List<String> resList : res) {
+                    for (List<String> itemList : term.when(this)) {
+                        List<String> productRes = new ArrayList<>();
+                        productRes.addAll(resList);
+                        productRes.addAll(itemList);
+                        tmp.add(productRes);
+                    }
+                }
+                res = tmp;
+            }
+            return res;
+        }
+
+        @Override
+        public List<List<String>> match(OrPrerequisite self) {
+            ArrayList<List<String>> res = new ArrayList<>();
+            for (Prerequisite pre : self.terms) {
+                res.addAll(pre.when(this));
+            }
+            return res;
+        }
+
+        @Override
+        public List<List<String>> match(CoursePrerequisite self) {
+            ArrayList<List<String>> res = new ArrayList<>();
+            res.add(new ArrayList<>());
+            res.get(0).add(self.courseID);
+            return res;
+        }
+    });
+    stmt =conn.prepareStatement("INSERT INTO public.prerequisite_group (id, target_course_id, \"count\") VALUES (DEFAULT, '"+courseId +"', ?)");
+    PreparedStatement truthTableStmt = conn.prepareStatement("INSERT INTO public.prerequisite_truth_table (id, group_id, course_id) VALUES (DEFAULT, ?, ?)");
+    for (List<String> group :truthTable) {
+        stmt.setInt(1, group.size());
+        stmt.addBatch();
+        for (String preCourseId : group) {
+            truthTableStmt.setInt(1, groupSerialStart);
+            truthTableStmt.setString(2, preCourseId);
+            truthTableStmt.addBatch();
+        }
+        groupSerialStart++;
+    }
+        stmt.executeBatch();
+        truthTableStmt.executeBatch();
+}
+```
+
+#### Import
 
 To convert boolean tree to truth table, we used methods below:
 
@@ -40,7 +97,7 @@ For and node: use its child groups' lists to do cartesian product and get result
 After get the table, store every groups' id and size to table prerequisite_group, and store every group to
 prerequisite_truth_table with its group number.
 
-#### query
+#### Query
 
 To check if a course satisfy its prerequisite is simple.
 
@@ -65,6 +122,43 @@ BatchedStatement, it needs to call the join() method manually to prove the consi
 
 Although the lock in BatchedStatement costs much, it is still significantly faster.
 
+Code:
+
+```java
+public BatchedStatement(String sql, String name) throws SQLException {
+    this.sql = sql;
+    start = System.nanoTime();
+    countdown.set(COUNTDOWN_TIME);
+    conn = SQLDataSource.getInstance().getSQLConnection();
+    conn.setAutoCommit(false);
+    stmt = conn.prepareStatement(sql);
+    thread = new Thread(() -> {
+        while (true) {
+            try {
+                if (!submitting.get()) countdown.decrementAndGet();
+                if (countdown.get() <= 0) break;
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        synchronized (lock) {
+            try {
+                closed.set(true);
+                stmt.executeBatch();
+                conn.commit();
+                conn.close();
+                finished.set(true);
+                System.out.printf("Batch %s finished, used %.2fms\n", name, (System.nanoTime() - start) / 1000000.0);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    });
+    thread.start();
+}
+```
+
 ### Cache
 
 To be honest, the 'cache' in our project is too simple to be a cache.
@@ -82,9 +176,7 @@ searchCourse.
 
 ### Select, Add, Delete, Update:
 
-Most of these three basic operations can be done within single SQL statement. By using the following function we can
-reduce some code. We designed function update() and select() to handle single SQL statement with parameters of lambda
-expressions.
+Most of these three basic operations can be done within single SQL statement.  We designed function update() and select() to handle single SQL statement with parameters of lambda expressions. By using those functions we can reduce some code.
 
 Example Code:
 
@@ -336,7 +428,18 @@ Test enroll course 2: 1000
 Test enroll course 2 time: 1.06s     |   0.16s
 ```
 
-Our computer's performance is a little worse than SA's computer, but it still shows that our enrollCourse, dropCourse
+Our computer's performance is a little worse than SA's computer's, but it still shows that our enrollCourse, dropCourse
 and searchCourse is slow than his. However, imports used batchedStatement is faster.
 
 Also, we had passed all local test cases.
+
+### Optimization Methods
+
+1. Using SQL functions to decrease interaction times when there is multiple quiries
+2. Batch commit
+3. Multi-threads
+4. BatchStatement
+5. Minimize amount of query result data
+6. Reduce query complexity
+7. Using indexes to boost searching
+
