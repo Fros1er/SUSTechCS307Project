@@ -443,3 +443,8 @@ Also, we had passed all local test cases.
 6. Reduce query complexity
 7. Using indexes to boost searching
 
+
+
+### Memory Consumption
+
+![image-20211231124959548](E:\Sustech\Database\Project\DBProj2\SUSTechCS307Project\reportpics\2.png)
