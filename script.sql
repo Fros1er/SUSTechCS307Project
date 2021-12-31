@@ -130,6 +130,9 @@ create table section
 create unique index section_id_uindex
     on section (id);
 
+create index hash_idx_section_semester
+    on section using hash (semester_id);
+
 create table class
 (
     id            serial
@@ -151,6 +154,18 @@ create table class
 
 create unique index class_id_uindex
     on class (id);
+
+create index class_start_btree_idx
+    on class (class_start);
+
+create index class_end_btree_idx
+    on class (class_end);
+
+create index hash_idx_class_dow
+    on class using hash (day_of_week);
+
+create index btree_idx_class_instructor
+    on class (instructor_id);
 
 create table prerequisite_group
 (
@@ -193,10 +208,17 @@ create table student_course
     primary key (student_id, section_id)
 );
 
+create table res
+(
+    exists boolean
+);
+
 create function is_prerequisite_satisfied(integer, character varying) returns boolean
     language plpgsql
 as
 $$
+declare
+    res boolean;
 begin
     create temporary table if not exists c on commit drop as (
         select pg.id, pg.count, ptt.course_id
@@ -206,24 +228,26 @@ begin
     );
     if exists(select * from c)
     then
-        return exists(
+        select exists(
             select *
             from (
                 select c.id, c.count, count(*) over (partition by c.id) as cnt
                 from c
                 inner join (
                     select distinct course_id
-                    from student_course
-                    inner join section s on student_course.section_id = s.id
+                    from section s
+                    inner join student_course on student_course.section_id = s.id
                     where student_course.student_id = $1
                     and grade > 60
                 ) as sc on sc.course_id = c.course_id
             ) cnt_table
             where count = cnt
-        );
+        ) into res;
     else
-        return true;
+        select true into res;
     end if;
+    drop table c;
+    return res;
 end
 $$;
 
@@ -329,39 +353,30 @@ $$
 declare
     target_course_id     varchar;
     target_left_capacity integer;
-    temp_grade           integer;
 
 begin
     select course_id from section where id = $2 into target_course_id;
     select left_capacity from section where id = $2 into target_left_capacity;
-
-    raise notice 'sid: %', $1;
-    raise notice 'id: %', target_course_id;
 
     if (target_course_id is null)
     then
         return 'COURSE_NOT_FOUND';
     end if;
 
-    if (exists(select * from student_course where student_id = $1 and section_id = $2))
+    if (exists(select from student_course where student_id = $1 and section_id = $2))
     then
         return 'ALREADY_ENROLLED';
     end if;
 
-    for temp_grade in (select grade
-                       from student_course
-                                join section s2 on student_course.section_id = s2.id
-                       where course_id = target_course_id
-                         and student_id = $1)
-        loop
-            if (temp_grade >= 60)
-            then
-                return 'ALREADY_PASSED';
-            end if;
-        end loop;
-
-    raise notice 'prereq: %', is_prerequisite_satisfied($1, target_course_id);
-
+    if (exists(select
+               from student_course
+                        join section s2 on student_course.section_id = s2.id
+               where course_id = target_course_id
+                 and student_id = $1
+                 and grade >= 60)) then
+        return 'ALREADY_PASSED';
+    end if;
+    
     if not (is_prerequisite_satisfied($1, target_course_id))
     then
         return 'PREREQUISITES_NOT_FULFILLED';
@@ -398,11 +413,7 @@ begin
                                                        on t.section_id = section.id
                                                   join class
                                                        on t.section_id = class.section_id)
-               select enrolled_section.semester,
-                      enrolled_section.day,
-                      enrolled_section.week,
-                      enrolled_section.start_time,
-                      enrolled_section.end_time
+               select
                from enrolled_section,
                     target_section
                where enrolled_section.semester = target_section.semester
@@ -422,6 +433,92 @@ begin
     insert into student_course(student_id, section_id, grade) VALUES ($1, $2, null);
     update section set left_capacity = left_capacity - 1 where id = $2;
     return 'SUCCESS';
+end;
+$$;
+
+create function isnullsection(sectionid integer) returns boolean
+    language plpgsql
+as
+$$
+declare sw bool;
+    begin
+        create temporary table if not exists b on commit drop as (
+        select id from class where class.section_id = sectionId);
+        if (exists(select * from b))
+            then sw = true;
+        else sw = false;
+        end if;
+        return sw;
+    end
+$$;
+
+create function drop_course(_student_id integer, _section_id integer) returns integer
+    language plpgsql
+as
+$$
+declare
+    flag int;
+begin
+    if not exists(select * from student_course where student_id = _student_id and section_id = _section_id) then
+        return -1;
+    end if;
+    with deleted as (delete from student_course where student_id = _student_id and section_id = _section_id and grade is null returning *) select count(*) as cnt into flag from deleted;
+    if flag != 0 then
+        update section set left_capacity = left_capacity + 1 where _section_id = id and left_capacity != section.total_capacity;
+        return 1;
+    end if;
+    return 0;
+end
+$$;
+
+create function ignorepassed(stid integer)
+    returns TABLE(courseid character varying)
+    language plpgsql
+as
+$$
+begin
+      return query select c.id from student_course join section s on s.id = student_course.section_id
+         join course c on s.course_id = c.id and student_course.student_id = stid and grade >= 60;
+    end
+$$;
+
+create function get_course_table(integer, date)
+    returns TABLE(day_of_week weekday, course_name text, instructor_id integer, instructor_name character varying, class_begin smallint, class_end smallint, location character varying)
+    language plpgsql
+as
+$$
+declare
+    current_semester_id integer;
+    diff                integer;
+    week_num            integer;
+BEGIN
+    select id,
+           $2 - begin
+    into current_semester_id, diff
+    from semester
+    where begin <= $2
+      and $2 <= semester.end;
+
+    select ceil((diff + 1) / 7.0) into week_num;
+    return query
+        with temp_sections as (select section_id
+                               from student_course
+                               where student_id = $1)
+        select c.day_of_week                                  as day,
+               c2.course_name || '[' || s.section_name || ']' as class_name,
+               c.instructor_id                                as instructor_id,
+               u.full_name                                    as instructor_full_name,
+               c.class_start                                  as class_begin,
+               c.class_end                                    as class_end,
+               c.location                                     as location
+        from temp_sections
+                 join section s on section_id = s.id
+                 join class c on s.id = c.section_id
+                 join instructor i on i.user_id = c.instructor_id
+                 join "user" u on u.id = i.user_id
+                 join course c2 on s.course_id = c2.id
+        where semester_id = current_semester_id
+          and week_list @> array[cast(week_num as smallint)];
 end;
 $$;
 
