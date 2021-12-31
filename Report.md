@@ -404,6 +404,10 @@ BEGIN
 end;
 $$;
 ```
+### Resource Consumption
+We use the default cache of postgres.
+the size of our database is 138Mb and the json files has totally 41 Mb, so we use more space to store the data.
+
 
 ### Performance
 
